@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>HomeworkFocus · Homework</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%9A%3C/text%3E%3C/svg%3E" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div class="logo">📚</div>
+    <div style="flex:1">
+      <h1 id="greeting">Hi!</h1>
+      <p id="assignmentSummary">Loading today's homework…</p>
+    </div>
+  </div>
+
+  <div class="card" style="text-align:center;">
+    <h2>Choose what to work on</h2>
+    <div class="task-choice-row">
+      <a id="readingBtn" class="btn primary task-choice-btn">
+        <span class="task-choice-icon">📖</span>
+        Reading Homework
+      </a>
+      <a id="listeningBtn" class="btn primary task-choice-btn">
+        <span class="task-choice-icon">🎧</span>
+        Listening Homework
+      </a>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<script src="db.js"></script>
+<script src="student.js"></script>
+</body>
+</html>

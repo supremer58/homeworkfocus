@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>HomeworkFocus</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%9A%3C/text%3E%3C/svg%3E" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div class="logo">📚</div>
+    <div>
+      <h1>HomeworkFocus</h1>
+      <p>Stay after class, finish strong.</p>
+    </div>
+  </div>
+
+  <div class="card" style="max-width: 420px; margin: 40px auto 0;">
+    <h2>Join today's session</h2>
+    <div class="field">
+      <label for="nameInput">Your name</label>
+      <input type="text" id="nameInput" placeholder="e.g. Aiko" autocomplete="off" />
+    </div>
+    <div class="field">
+      <label for="pinInput">Class PIN</label>
+      <input type="text" id="pinInput" placeholder="Ask your teacher" autocomplete="off" inputmode="numeric" />
+    </div>
+    <button id="joinBtn" class="btn primary" style="width:100%; justify-content:center;">Start working ▶</button>
+    <p id="errorMsg" class="error-text" hidden></p>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<script src="db.js"></script>
+<script>
+  const nameInput = document.getElementById('nameInput');
+  const pinInput = document.getElementById('pinInput');
+  const joinBtn = document.getElementById('joinBtn');
+  const errorMsg = document.getElementById('errorMsg');
+
+  async function join() {
+    const name = nameInput.value.trim();
+    const pin = pinInput.value.trim();
+    errorMsg.hidden = true;
+    if (!name) { errorMsg.textContent = 'Please enter your name.'; errorMsg.hidden = false; return; }
+    if (!pin) { errorMsg.textContent = 'Please enter the class PIN.'; errorMsg.hidden = false; return; }
+
+    joinBtn.disabled = true;
+    joinBtn.textContent = 'Joining...';
+    try {
+      const data = await db.join(name, pin);
+      if (data.error) {
+        errorMsg.textContent = data.error === 'wrong-pin' ? 'That PIN doesn\'t match. Check with your teacher.' : 'Could not join. Try again.';
+        errorMsg.hidden = false;
+        joinBtn.disabled = false;
+        joinBtn.textContent = 'Start working ▶';
+        return;
+      }
+      sessionStorage.setItem('hf-student-id', data.id);
+      sessionStorage.setItem('hf-student-name', name);
+      window.location.href = 'student.html';
+    } catch (e) {
+      errorMsg.textContent = 'Could not reach the server. Check your internet connection.';
+      errorMsg.hidden = false;
+      joinBtn.disabled = false;
+      joinBtn.textContent = 'Start working ▶';
+    }
+  }
+
+  joinBtn.addEventListener('click', join);
+  pinInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') join(); });
+</script>
+</body>
+</html>

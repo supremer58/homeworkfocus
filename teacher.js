@@ -1,0 +1,539 @@
+(function () {
+  const typeInput = document.getElementById('typeInput');
+  const passageField = document.getElementById('passageField');
+  const audioField = document.getElementById('audioField');
+  const saveMsg = document.getElementById('saveMsg');
+  const roster = document.getElementById('roster');
+  const joinInfo = document.getElementById('joinInfo');
+  const toast = document.getElementById('toast');
+
+  function showToast(msg) {
+    toast.textContent = msg;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 2600);
+  }
+
+  typeInput.addEventListener('change', () => {
+    const isListening = typeInput.value === 'listening';
+    passageField.hidden = isListening;
+    audioField.hidden = !isListening;
+  });
+
+  const joinUrl = `${window.location.origin}/`;
+  joinInfo.textContent = `Students join at ${joinUrl}`;
+
+  // ---- QR code ----
+  const qrCard = document.getElementById('qrCard');
+  document.getElementById('showQrBtn').addEventListener('click', async () => {
+    qrCard.hidden = !qrCard.hidden;
+    if (!qrCard.hidden) {
+      document.getElementById('qrImg').src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(joinUrl)}`;
+      document.getElementById('qrUrlText').textContent = joinUrl;
+      const state = await db.getState();
+      document.getElementById('qrPinText').textContent = state.pin || '';
+    }
+  });
+
+  // ---- Copy invite ----
+  document.getElementById('copyInviteBtn').addEventListener('click', async () => {
+    const state = await db.getState();
+    const text = `Join HomeworkFocus: ${joinUrl}\nPIN: ${state.pin || ''}`;
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast('📋 Copied! Paste it in Zoom chat, Classroom, anywhere.');
+    } catch (e) {
+      showToast('Could not copy — your browser may need clipboard permission.');
+    }
+  });
+
+  // ---- Assignment library ----
+  const assignmentList = document.getElementById('assignmentList');
+  let editingId = null;
+
+  async function loadAssignments() {
+    const data = await db.getAssignments();
+    const assignments = data.assignments || {};
+    const currentId = data.currentAssignmentId;
+    const entries = Object.entries(assignments);
+    if (entries.length === 0) {
+      assignmentList.innerHTML = '<p class="hint">No assignments yet — create one below.</p>';
+    } else {
+      assignmentList.innerHTML = entries.map(([id, a]) => `
+        <div class="roster-row">
+          <div class="name">${escapeHtml(a.title)} ${id === currentId ? '<span class="badge working">class default</span>' : ''}</div>
+          <div class="meta">${a.type === 'listening' ? '🎧 listening' : '📝 translation'}</div>
+          <div class="row-actions">
+            <button class="btn ghost small" data-set-default="${id}" title="Set as class default">⭐</button>
+            <button class="btn ghost small" data-edit="${id}" title="Edit">✎</button>
+          </div>
+        </div>`).join('');
+    }
+    return { assignments, currentId };
+  }
+
+  assignmentList.addEventListener('click', async (e) => {
+    const setDefaultId = e.target.closest('[data-set-default]')?.dataset.setDefault;
+    const editId = e.target.closest('[data-edit]')?.dataset.edit;
+    if (setDefaultId) {
+      await db.setDefaultAssignment(setDefaultId);
+      showToast('Class default updated ✓');
+      loadAssignments();
+      populateStudentAssignmentOptions();
+    } else if (editId) {
+      const data = await db.getAssignments();
+      const a = data.assignments[editId];
+      if (!a) return;
+      editingId = editId;
+      document.getElementById('titleInput').value = a.title || '';
+      typeInput.value = a.type || 'translation';
+      typeInput.dispatchEvent(new Event('change'));
+      document.getElementById('contentInput').value = a.type === 'listening' ? '' : (a.content || '');
+      document.getElementById('audioUrlInput').value = a.type === 'listening' ? (a.content || '') : '';
+      document.getElementById('targetMinInput').value = a.targetMinutes || 15;
+      document.getElementById('requireMinTimeInput').checked = !!a.requireMinTime;
+      window.scrollTo({ top: assignmentList.getBoundingClientRect().bottom + window.scrollY, behavior: 'smooth' });
+    }
+  });
+
+  document.getElementById('saveAssignmentBtn').addEventListener('click', async () => {
+    const type = typeInput.value;
+    const assignment = {
+      id: editingId || undefined,
+      type,
+      title: document.getElementById('titleInput').value.trim() || 'Untitled assignment',
+      content: type === 'listening'
+        ? document.getElementById('audioUrlInput').value.trim()
+        : document.getElementById('contentInput').value.trim(),
+      targetMinutes: parseInt(document.getElementById('targetMinInput').value, 10) || 15,
+      requireMinTime: document.getElementById('requireMinTimeInput').checked,
+    };
+    const data = await db.saveAssignment(assignment);
+    await db.setDefaultAssignment(data.id);
+
+    const pin = document.getElementById('pinField').value.trim();
+    if (pin) {
+      await db.setPin(pin);
+    }
+    try {
+      localStorage.setItem('hf-last-assignment-settings', JSON.stringify({
+        targetMinutes: assignment.targetMinutes, requireMinTime: assignment.requireMinTime,
+      }));
+    } catch (e) { /* localStorage unavailable, skip remembering */ }
+    editingId = null;
+    saveMsg.textContent = 'Saved ✓';
+    setTimeout(() => saveMsg.textContent = '', 2000);
+    loadAssignments();
+    populateStudentAssignmentOptions();
+  });
+
+  async function loadPin() {
+    const state = await db.getState();
+    document.getElementById('pinField').value = state.pin || '';
+  }
+
+  function applyRememberedSettings() {
+    try {
+      const saved = JSON.parse(localStorage.getItem('hf-last-assignment-settings') || 'null');
+      if (saved) {
+        document.getElementById('targetMinInput').value = saved.targetMinutes || 15;
+        document.getElementById('requireMinTimeInput').checked = !!saved.requireMinTime;
+      }
+    } catch (e) { /* ignore malformed storage */ }
+  }
+
+  // ---- Broadcast ----
+  document.getElementById('broadcastBtn').addEventListener('click', async () => {
+    const input = document.getElementById('broadcastInput');
+    const text = input.value.trim();
+    if (!text) return;
+    await db.sendMessage({ studentId: null, from: 'teacher', fromName: 'Teacher', text });
+    input.value = '';
+    document.getElementById('broadcastMsg').textContent = 'Sent to everyone ✓';
+    setTimeout(() => document.getElementById('broadcastMsg').textContent = '', 2500);
+  });
+
+  document.getElementById('nudgeIdleBtn').addEventListener('click', async () => {
+    if (currentIdleIds.length === 0) {
+      showToast('🎉 No one is idle right now — everyone is on task or offline.');
+      return;
+    }
+    const input = document.getElementById('broadcastInput');
+    const text = input.value.trim() || "⏰ Just checking in — need help getting back on track?";
+    await Promise.all(currentIdleIds.map((id) => db.sendMessage({ studentId: id, from: 'teacher', fromName: 'Teacher', text })));
+    input.value = '';
+    document.getElementById('broadcastMsg').textContent = `Sent to ${currentIdleIds.length} idle student${currentIdleIds.length > 1 ? 's' : ''} ✓`;
+    setTimeout(() => document.getElementById('broadcastMsg').textContent = '', 2500);
+  });
+
+  document.getElementById('clearRosterBtn').addEventListener('click', async () => {
+    if (!confirm('Start a fresh session? Today\'s roster will be saved to the report, then cleared. Assignments stay the same.')) return;
+    await db.clearRoster();
+    refreshRoster();
+  });
+
+  document.getElementById('downloadHistoryBtn').addEventListener('click', async () => {
+    const history = await db.getHistory();
+    if (!history.length) { showToast('No history yet — nothing to download.'); return; }
+    const rows = [['Date', 'Name', 'Assignment', 'Active time (min)', 'Completed', 'Reading answer', 'Listening answer']];
+    history.forEach(h => {
+      rows.push([
+        h.date, h.name, h.assignmentTitle,
+        (Math.round((h.activeMs || 0) / 6000) / 10).toString(),
+        h.completed ? 'Yes' : 'No',
+        (h.readingAnswerText || '').replace(/\n/g, ' '),
+        (h.listeningAnswerText || '').replace(/\n/g, ' '),
+      ]);
+    });
+    const csv = rows.map(r => r.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `homeworkfocus-report-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+  });
+
+  function fmt(ms) {
+    const s = Math.floor(ms / 1000);
+    const m = Math.floor(s / 60);
+    return String(m).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+  }
+
+  const ONLINE_TIMEOUT_MS = 10000;
+  const IDLE_ALERT_MS = 120000;
+  const alertedIdle = new Set();
+  let assignmentsCache = {};
+  let currentIdleIds = [];
+
+  let viewedMsgCounts = {};
+  try { viewedMsgCounts = JSON.parse(localStorage.getItem('hf-viewed-msg-counts') || '{}'); } catch (e) { /* ignore */ }
+  function saveViewedMsgCounts() {
+    try { localStorage.setItem('hf-viewed-msg-counts', JSON.stringify(viewedMsgCounts)); } catch (e) { /* ignore */ }
+  }
+
+  async function populateStudentAssignmentOptions() {
+    const data = await db.getAssignments();
+    assignmentsCache = data.assignments || {};
+  }
+
+  async function refreshRoster() {
+    const [state, allMessages] = await Promise.all([
+      db.getState(),
+      db.getMessages(),
+    ]);
+    const msgCountsByStudent = {};
+    allMessages.forEach((m) => {
+      if (m.from === 'student' && m.studentId) msgCountsByStudent[m.studentId] = (msgCountsByStudent[m.studentId] || 0) + 1;
+    });
+
+    const students = state.students || {};
+    const entries = Object.entries(students);
+    renderAnswersGrid(entries);
+    if (entries.length === 0) {
+      roster.innerHTML = '<p class="hint" style="text-align:center; padding:20px 0;">🕐 Waiting for students to join — share the PIN or QR code above.</p>';
+      document.getElementById('rosterSummary').textContent = '';
+      currentIdleIds = [];
+      return;
+    }
+    const now = Date.now();
+    entries.sort((a, b) => a[1].name.localeCompare(b[1].name));
+
+    let onlineCount = 0, workingCount = 0, doneCount = 0;
+    currentIdleIds = [];
+    const assignmentOptions = Object.entries(assignmentsCache)
+      .map(([id, a]) => `<option value="${id}">${escapeHtml(a.title)}</option>`).join('');
+
+    roster.innerHTML = entries.map(([id, s]) => {
+      const lastSeenMs = now - new Date(s.lastSeen).getTime();
+      const online = lastSeenMs < ONLINE_TIMEOUT_MS;
+      const isActive = s.isActive && online && !s.paused;
+      if (online) onlineCount++;
+      if (isActive) workingCount++;
+      if (s.completed) doneCount++;
+
+      const idleForMs = (online && !isActive && !s.paused && !s.completed && s.idleSince)
+        ? now - new Date(s.idleSince).getTime() : 0;
+      const idleTooLong = idleForMs > IDLE_ALERT_MS;
+      if (idleTooLong && !alertedIdle.has(id)) {
+        alertedIdle.add(id);
+        playAlertBeep();
+      } else if (!idleTooLong) {
+        alertedIdle.delete(id);
+      }
+      if (idleTooLong && online) currentIdleIds.push(id);
+
+      const hasUnreadMsg = (msgCountsByStudent[id] || 0) > (viewedMsgCounts[id] || 0);
+
+      let badge, metaText, dotClass;
+      if (!online) {
+        badge = '<span class="badge offline">offline</span>';
+        metaText = 'last seen ' + timeAgo(lastSeenMs);
+        dotClass = 'offline';
+      } else if (s.completed) {
+        badge = '<span class="badge done">✓ done</span>';
+        metaText = 'online';
+        dotClass = 'online';
+      } else if (s.paused) {
+        badge = '<span class="badge idle">⏸ paused</span>';
+        metaText = 'online, paused by you';
+        dotClass = 'online';
+      } else if (idleTooLong) {
+        badge = `<span class="badge offline" style="background:#fde7e7; color:#c0392b;">⚠ idle ${Math.floor(idleForMs / 60000)}m</span>`;
+        metaText = 'online, stuck or distracted?';
+        dotClass = 'online';
+      } else if (isActive) {
+        badge = '<span class="badge working">● working</span>';
+        metaText = 'online, actively working';
+        dotClass = 'working';
+      } else {
+        badge = '<span class="badge idle">idle</span>';
+        metaText = 'online, not working right now';
+        dotClass = 'online';
+      }
+
+      const currentAssignId = s.assignmentId || '';
+
+      return `
+        <div class="roster-row ${isActive ? 'active' : ''} ${idleTooLong ? 'alert' : ''}">
+          <div class="status-dot ${dotClass}"></div>
+          <div class="name">${escapeHtml(s.name)}</div>
+          <div class="meta">${metaText}</div>
+          ${badge}
+          <div class="time" title="Total active time">${fmt(s.activeMs || 0)}</div>
+          <div class="row-actions">
+            <button class="btn ghost small" data-action="answer" data-id="${id}" data-name="${escapeHtml(s.name)}" title="View their answer">📝</button>
+            <button class="btn ghost small" data-action="${s.paused ? 'resume' : 'pause'}" data-id="${id}" title="${s.paused ? 'Resume timer' : 'Pause timer'}">${s.paused ? '▶' : '⏸'}</button>
+            <button class="btn ghost small" data-action="reset" data-id="${id}" title="Reset timer">↺</button>
+            <button class="btn ghost small chat-action ${hasUnreadMsg ? 'has-unread' : ''}" data-action="chat" data-id="${id}" data-name="${escapeHtml(s.name)}" title="Message ${escapeHtml(s.name)} privately${hasUnreadMsg ? ' (new message!)' : ''}">💬</button>
+          </div>
+          <div style="flex-basis:100%; display:flex; align-items:center; gap:8px; margin-top:4px;">
+            <label class="hint" style="margin:0; white-space:nowrap;">Assignment:</label>
+            <select data-assign-select="${id}" style="width:auto; flex:1; min-width:140px; padding:6px 10px; font-size:13px;">
+              <option value="">Class default</option>
+              ${assignmentOptions}
+            </select>
+          </div>
+        </div>`;
+    }).join('');
+
+    roster.querySelectorAll('[data-assign-select]').forEach((sel) => {
+      const id = sel.dataset.assignSelect;
+      sel.value = students[id].assignmentId || '';
+      sel.addEventListener('change', async () => {
+        await db.assignStudent(id, sel.value || null);
+        showToast(`Assignment updated for ${students[id].name}`);
+      });
+    });
+
+    document.getElementById('rosterSummary').textContent =
+      `${onlineCount}/${entries.length} online · ${workingCount} actively working · ${doneCount} done`;
+  }
+
+  const answersGrid = document.getElementById('answersGrid');
+  const answerFilters = document.getElementById('answerFilters');
+  let selectedAnswerId = 'all';
+
+  function renderAnswersGrid(entries) {
+    if (entries.length === 0) {
+      answerFilters.innerHTML = '';
+      answersGrid.innerHTML = '<p class="hint" style="text-align:center; padding:20px 0;">No one has written anything yet.</p>';
+      return;
+    }
+    const sorted = [...entries].sort((a, b) => a[1].name.localeCompare(b[1].name));
+
+    if (selectedAnswerId !== 'all' && !sorted.some(([id]) => id === selectedAnswerId)) {
+      selectedAnswerId = 'all';
+    }
+
+    answerFilters.innerHTML = [
+      `<button class="filter-pill ${selectedAnswerId === 'all' ? 'active' : ''}" data-filter-id="all">All (${sorted.length})</button>`,
+      ...sorted.map(([id, s]) => `<button class="filter-pill ${selectedAnswerId === id ? 'active' : ''}" data-filter-id="${id}">${escapeHtml(s.name)}${s.completed ? ' ✓' : ''}</button>`),
+    ].join('');
+
+    const toShow = selectedAnswerId === 'all' ? sorted : sorted.filter(([id]) => id === selectedAnswerId);
+
+    answersGrid.innerHTML = toShow.map(([id, s]) => {
+      const reading = (s.readingAnswerText || '').trim();
+      const listening = (s.listeningAnswerText || '').trim();
+      return `
+        <div class="answer-card" id="answer-card-${id}">
+          <div class="answer-card-head">
+            <span class="name">${escapeHtml(s.name)}</span>
+            ${s.completed ? '<span class="badge done">✓ done</span>' : ''}
+          </div>
+          <div class="answer-block">
+            <div class="answer-label">📖 Reading / translation</div>
+            <div class="answer-text ${reading ? '' : 'empty'}">${reading ? escapeHtml(reading) : 'Nothing written yet'}</div>
+          </div>
+          <div class="answer-block">
+            <div class="answer-label">🎧 Listening</div>
+            <div class="answer-text ${listening ? '' : 'empty'}">${listening ? escapeHtml(listening) : 'Nothing written yet'}</div>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  answerFilters.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-filter-id]');
+    if (!btn) return;
+    selectedAnswerId = btn.dataset.filterId;
+    refreshRoster();
+  });
+
+  function playAlertBeep() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = 660;
+      gain.gain.setValueAtTime(0.15, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.4);
+    } catch (e) { /* audio not available, skip */ }
+  }
+
+  function timeAgo(ms) {
+    const s = Math.floor(ms / 1000);
+    if (s < 60) return s + 's ago';
+    const m = Math.floor(s / 60);
+    if (m < 60) return m + 'm ago';
+    return Math.floor(m / 60) + 'h ago';
+  }
+
+  roster.addEventListener('click', async (e) => {
+    const btn = e.target.closest('button[data-action]');
+    if (!btn) return;
+    const action = btn.dataset.action;
+    const id = btn.dataset.id;
+    if (action === 'pause' || action === 'resume') {
+      await db.control(id, action);
+      refreshRoster();
+    } else if (action === 'reset') {
+      if (!confirm('Reset this student\'s timer to 00:00?')) return;
+      await db.control(id, 'reset');
+      refreshRoster();
+    } else if (action === 'chat') {
+      openChat(id, btn.dataset.name);
+    } else if (action === 'answer') {
+      openAnswer(id, btn.dataset.name);
+    }
+  });
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+  }
+
+  // ---- Answer viewer ----
+  const answerPanel = document.getElementById('answerPanel');
+  const answerWithName = document.getElementById('answerWithName');
+  const answerBody = document.getElementById('answerBody');
+  const answerClose = document.getElementById('answerClose');
+  let activeAnswerId = null;
+  let answerPollHandle = null;
+
+  async function pollAnswer() {
+    if (!activeAnswerId) return;
+    const s = await db.getStudent(activeAnswerId);
+    if (!s) return;
+    const reading = (s.readingAnswerText || '').trim();
+    const listening = (s.listeningAnswerText || '').trim();
+    answerBody.innerHTML = `
+      <div style="margin-bottom:18px;">
+        <div class="hint" style="font-weight:700; margin-bottom:6px;">📖 Reading / translation</div>
+        <div>${reading ? escapeHtml(reading) : '<span class="hint">(nothing written yet)</span>'}</div>
+      </div>
+      <div>
+        <div class="hint" style="font-weight:700; margin-bottom:6px;">🎧 Listening</div>
+        <div>${listening ? escapeHtml(listening) : '<span class="hint">(nothing written yet)</span>'}</div>
+      </div>`;
+  }
+
+  function openAnswer(id, name) {
+    activeAnswerId = id;
+    answerWithName.textContent = `📝 ${name}'s answers`;
+    answerPanel.hidden = false;
+    chatPanel.hidden = true;
+    pollAnswer();
+    clearInterval(answerPollHandle);
+    answerPollHandle = setInterval(pollAnswer, 2500);
+  }
+  answerClose.addEventListener('click', () => {
+    answerPanel.hidden = true;
+    activeAnswerId = null;
+    clearInterval(answerPollHandle);
+  });
+
+  // ---- Chat ----
+  const chatPanel = document.getElementById('chatPanel');
+  const chatWithName = document.getElementById('chatWithName');
+  const chatLog = document.getElementById('chatLog');
+  const chatInput = document.getElementById('chatInput');
+  const chatSendBtn = document.getElementById('chatSendBtn');
+  const chatClose = document.getElementById('chatClose');
+  let activeChatId = null;
+  let activeChatName = '';
+  let chatPollHandle = null;
+
+  function renderMessages(msgs) {
+    if (msgs.length === 0) {
+      chatLog.innerHTML = `<p class="hint" style="text-align:center; margin-top:20px;">No messages yet — say hi to ${escapeHtml(activeChatName)}!</p>`;
+      return;
+    }
+    chatLog.innerHTML = msgs.map((m) => {
+      const mine = m.from === 'teacher';
+      const who = mine ? 'You' : activeChatName;
+      return `<div class="chat-bubble ${mine ? 'mine' : 'theirs'}"><span class="who">${who}</span>${escapeHtml(m.text)}</div>`;
+    }).join('');
+    chatLog.scrollTop = chatLog.scrollHeight;
+  }
+
+  async function pollChat() {
+    if (!activeChatId) return;
+    const msgs = await db.getMessages(activeChatId);
+    const mine = msgs.filter(m => m.studentId === activeChatId);
+    renderMessages(mine);
+    // Viewing the panel counts as reading everything currently in it.
+    const studentMsgCount = mine.filter(m => m.from === 'student').length;
+    if (studentMsgCount > (viewedMsgCounts[activeChatId] || 0)) {
+      viewedMsgCounts[activeChatId] = studentMsgCount;
+      saveViewedMsgCounts();
+    }
+  }
+
+  function openChat(id, name) {
+    activeChatId = id;
+    activeChatName = name;
+    chatWithName.textContent = `💬 ${name}`;
+    chatPanel.hidden = false;
+    answerPanel.hidden = true;
+    pollChat();
+    clearInterval(chatPollHandle);
+    chatPollHandle = setInterval(pollChat, 2500);
+  }
+
+  chatClose.addEventListener('click', () => {
+    chatPanel.hidden = true;
+    activeChatId = null;
+    clearInterval(chatPollHandle);
+  });
+
+  async function sendChat() {
+    const text = chatInput.value.trim();
+    if (!text || !activeChatId) return;
+    chatInput.value = '';
+    await db.sendMessage({ studentId: activeChatId, from: 'teacher', fromName: 'Teacher', text });
+    pollChat();
+  }
+  chatSendBtn.addEventListener('click', sendChat);
+  chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendChat(); });
+
+  applyRememberedSettings();
+  loadAssignments();
+  populateStudentAssignmentOptions();
+  loadPin();
+  refreshRoster();
+  setInterval(refreshRoster, 2500);
+})();

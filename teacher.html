@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>HomeworkFocus · Teacher</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%91%A9%E2%80%8D%F0%9F%8F%AB%3C/text%3E%3C/svg%3E" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div class="logo">👩‍🏫</div>
+    <div style="flex:1 1 200px; min-width:200px;">
+      <h1>HomeworkFocus — Teacher</h1>
+      <p id="joinInfo" class="hint"></p>
+    </div>
+    <div class="topbar-actions">
+      <button id="showQrBtn" class="btn ghost">📱 Join code</button>
+      <button id="copyInviteBtn" class="btn ghost">📋 Copy invite</button>
+      <button id="downloadHistoryBtn" class="btn ghost">⬇ Report</button>
+      <button id="clearRosterBtn" class="btn ghost">🧹 New session</button>
+    </div>
+  </div>
+
+  <div id="qrCard" class="card" hidden style="text-align:center;">
+    <h2>Scan to join</h2>
+    <img id="qrImg" alt="QR code to join" style="width:200px; height:200px; border-radius:12px; background:white; padding:8px;" />
+    <p class="hint" id="qrUrlText" style="margin-top:10px;"></p>
+    <p class="hint">PIN: <strong id="qrPinText" style="font-size:16px;"></strong></p>
+  </div>
+
+  <div class="card">
+    <h2>Assignment library</h2>
+    <div id="assignmentList" class="roster" style="margin-bottom:18px;"></div>
+
+    <h2 style="font-size:16px;">Add / edit an assignment</h2>
+    <div class="field">
+      <label for="titleInput">Title</label>
+      <input type="text" id="titleInput" placeholder="e.g. Translate: Unit 5 dialogue" />
+    </div>
+    <div class="field">
+      <label>Type</label>
+      <select id="typeInput">
+        <option value="translation">Translation passage</option>
+        <option value="listening">Listening track</option>
+      </select>
+    </div>
+    <div class="field" id="passageField">
+      <label for="contentInput">Passage text</label>
+      <textarea id="contentInput" rows="5" placeholder="Paste the passage students should translate..."></textarea>
+    </div>
+    <div class="field" id="audioField" hidden>
+      <label for="audioUrlInput">Audio URL</label>
+      <input type="text" id="audioUrlInput" placeholder="https://... link to the listening track" />
+    </div>
+    <div class="field" style="max-width:200px;">
+      <label for="targetMinInput">Suggested minutes</label>
+      <input type="text" id="targetMinInput" value="15" inputmode="numeric" />
+    </div>
+    <div class="field">
+      <label class="toggle-row">
+        <input type="checkbox" id="requireMinTimeInput" style="width:auto; margin-right:8px;" />
+        Require the suggested time before students can mark it done
+      </label>
+    </div>
+    <div class="field" style="max-width:200px;">
+      <label for="pinField">Class PIN</label>
+      <input type="text" id="pinField" placeholder="1234" />
+    </div>
+    <button id="saveAssignmentBtn" class="btn primary">Save to library &amp; set as class default</button>
+    <span id="saveMsg" class="hint" style="margin-left:10px;"></span>
+  </div>
+
+  <div class="card">
+    <label for="broadcastInput" style="margin-bottom:8px;">📢 Message students</label>
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      <input type="text" id="broadcastInput" placeholder="e.g. 5 minutes left, wrap up your answers!" style="flex:1 1 200px;" />
+      <button id="broadcastBtn" class="btn primary" style="flex-shrink:0;">Send to all</button>
+      <button id="nudgeIdleBtn" class="btn ghost" style="flex-shrink:0;" title="Send only to students who've been idle a while">🔔 Nudge idle only</button>
+    </div>
+    <span id="broadcastMsg" class="hint"></span>
+  </div>
+
+  <div class="card">
+    <div style="display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+      <h2 style="margin:0;">Live class status</h2>
+      <span id="rosterSummary" class="roster-summary-pill"></span>
+    </div>
+    <div id="roster" class="roster" style="margin-top:14px;"><p class="hint">Waiting for students to join…</p></div>
+  </div>
+
+  <div class="card">
+    <h2>All answers</h2>
+    <p class="hint" style="margin-bottom:14px;">Click a name to jump to just their work, or "All" to see everyone.</p>
+    <div id="answerFilters" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:18px;"></div>
+    <div id="answersGrid" class="roster"><p class="hint">No one has written anything yet.</p></div>
+  </div>
+</div>
+
+<div id="answerPanel" class="chat-panel" hidden>
+  <div class="chat-header">
+    <span id="answerWithName">📝 Answer</span>
+    <button id="answerClose" class="icon-btn">✕</button>
+  </div>
+  <div id="answerBody" class="chat-log" style="white-space:pre-wrap; font-size:14px;"></div>
+</div>
+
+<div id="chatPanel" class="chat-panel" hidden>
+  <div class="chat-header">
+    <span id="chatWithName">💬 Messages</span>
+    <button id="chatClose" class="icon-btn">✕</button>
+  </div>
+  <div id="chatLog" class="chat-log"></div>
+  <div class="chat-input-row">
+    <input type="text" id="chatInput" placeholder="Type a message…" autocomplete="off" />
+    <button id="chatSendBtn" class="btn primary" style="padding:10px 16px;">Send</button>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<script src="db.js"></script>
+<script src="teacher.js"></script>
+</body>
+</html>

@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>HomeworkFocus · Listening</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8E%A7%3C/text%3E%3C/svg%3E" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div class="logo">🎧</div>
+    <div style="flex:1">
+      <h1 id="greeting">Hi!</h1>
+      <p>Keep working — the timer only counts while you're actually on task.</p>
+    </div>
+    <div id="timerBadge" class="timer-badge paused" title="Counts only while audio is playing or you're typing. Pauses when idle or you switch tabs.">
+      <span class="dot"></span>
+      <span id="timerDisplay">00:00</span>
+    </div>
+  </div>
+
+  <a href="student.html" class="back-link">← Back to homework menu</a>
+
+  <div class="card" id="pausedBanner" hidden style="background:#fff4e5; border-color:#f5c98a; color:#92400e;">
+    <strong>⏸ Your teacher paused your timer.</strong> Hang tight — it'll resume when they unpause it.
+  </div>
+
+  <div class="card" id="mismatchCard" hidden style="text-align:center;">
+    <h2>🎧 No listening homework right now</h2>
+    <p class="hint">Check with your teacher, or head back to the homework menu.</p>
+  </div>
+
+  <div class="card" id="taskCard" hidden>
+    <h2 id="assignmentTitle">Loading today's listening homework…</h2>
+
+    <p class="hint" style="margin-bottom:14px;">Listen to the track (as many times as you need), then write what you hear / answer below.</p>
+    <audio id="audioTrack" controls style="width:100%; margin-bottom: 22px;"></audio>
+    <div class="field">
+      <label for="listenAnswerBox">Your answer / transcription</label>
+      <textarea id="listenAnswerBox" rows="10" placeholder="Type what you hear, or your answers..."></textarea>
+    </div>
+
+    <div class="progress-wrap">
+      <div class="progress-bar"><div id="progressFill" class="progress-fill" style="width:0%"></div></div>
+      <span class="progress-label" id="progressLabel">0% toward suggested time</span>
+    </div>
+
+    <button id="doneBtn" class="btn primary">✅ Mark as done</button>
+    <span id="doneMsg" class="hint" style="margin-left:10px;"></span>
+    <p id="doneHint" class="hint" style="margin-top:8px; color:var(--brand-2);"></p>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<button id="chatToggle" class="chat-fab" title="Message your teacher">💬</button>
+<div id="chatPanel" class="chat-panel" hidden>
+  <div class="chat-header">
+    <span>💬 Messages with your teacher</span>
+    <button id="chatClose" class="icon-btn">✕</button>
+  </div>
+  <div id="chatLog" class="chat-log"></div>
+  <div class="chat-input-row">
+    <input type="text" id="chatInput" placeholder="Type a message…" autocomplete="off" />
+    <button id="chatSendBtn" class="btn primary" style="padding:10px 16px;">Send</button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<script src="db.js"></script>
+<script src="activity-timer.js"></script>
+<script src="student-common.js"></script>
+<script>initHomeworkPage('listening');</script>
+</body>
+</html>
