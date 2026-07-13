@@ -248,7 +248,7 @@
 
     const students = state.students || {};
     const allEntries = Object.entries(students);
-    renderAnswersGrid(allEntries, allMessages);
+    renderAnswersGrid(allEntries);
 
     // Students who've been disconnected a while drop off the live list —
     // it goes back to "waiting for students" on its own, no manual reset
@@ -369,9 +369,7 @@
   const answerFilters = document.getElementById('answerFilters');
   let selectedAnswerId = 'all';
 
-  const REVISION_PREFIX = '🔄 Revision — ';
-
-  function renderAnswersGrid(entries, allMessages) {
+  function renderAnswersGrid(entries) {
     if (entries.length === 0) {
       answerFilters.innerHTML = '';
       answersGrid.innerHTML = '<p class="hint" style="text-align:center; padding:20px 0;">No one has written anything yet.</p>';
@@ -383,13 +381,6 @@
       selectedAnswerId = 'all';
     }
 
-    const revisionsByStudent = {};
-    (allMessages || []).forEach((m) => {
-      if (m.from === 'student' && m.studentId && m.text.startsWith(REVISION_PREFIX)) {
-        (revisionsByStudent[m.studentId] = revisionsByStudent[m.studentId] || []).push(m);
-      }
-    });
-
     answerFilters.innerHTML = [
       `<button class="filter-pill ${selectedAnswerId === 'all' ? 'active' : ''}" data-filter-id="all">All (${sorted.length})</button>`,
       ...sorted.map(([id, s]) => `<button class="filter-pill ${selectedAnswerId === id ? 'active' : ''}" data-filter-id="${id}">${escapeHtml(s.name)}${s.completed ? ' ✓' : ''}</button>`),
@@ -400,18 +391,6 @@
     answersGrid.innerHTML = toShow.map(([id, s]) => {
       const reading = (s.readingAnswerText || '').trim();
       const listening = (s.listeningAnswerText || '').trim();
-      const revisions = revisionsByStudent[id] || [];
-      const revisionsHtml = revisions.length ? `
-          <div class="answer-block">
-            <div class="answer-label">🔄 Revisions sent</div>
-            ${revisions.map((m) => {
-              const rest = m.text.slice(REVISION_PREFIX.length);
-              const splitAt = rest.indexOf('\n\n');
-              const title = splitAt === -1 ? rest : rest.slice(0, splitAt);
-              const body = splitAt === -1 ? '' : rest.slice(splitAt + 2);
-              return `<div class="answer-text" style="margin-bottom:6px;"><strong>${escapeHtml(title)}:</strong> ${escapeHtml(body)}</div>`;
-            }).join('')}
-          </div>` : '';
       return `
         <div class="answer-card" id="answer-card-${id}">
           <div class="answer-card-head">
@@ -427,7 +406,6 @@
             <div class="answer-label">🎧 Listening</div>
             <div class="answer-text ${listening ? '' : 'empty'}">${listening ? escapeHtml(listening) : 'Nothing written yet'}</div>
           </div>
-          ${revisionsHtml}
         </div>`;
     }).join('');
   }
