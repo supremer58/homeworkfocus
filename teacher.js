@@ -104,10 +104,23 @@
 
   document.getElementById('saveAssignmentBtn').addEventListener('click', async () => {
     const type = typeInput.value;
+    const title = document.getElementById('titleInput').value.trim() || 'Untitled assignment';
+
+    // Saving with a title that matches an existing assignment of the same
+    // type updates that one in place, instead of creating a duplicate.
+    let targetId = editingId;
+    if (!targetId) {
+      const existing = await db.getAssignments();
+      const match = Object.values(existing.assignments || {}).find(
+        (a) => a.type === type && a.title.trim().toLowerCase() === title.toLowerCase()
+      );
+      if (match) targetId = match.id;
+    }
+
     const assignment = {
-      id: editingId || undefined,
+      id: targetId || undefined,
       type,
-      title: document.getElementById('titleInput').value.trim() || 'Untitled assignment',
+      title,
       content: type === 'listening'
         ? document.getElementById('audioUrlInput').value.trim()
         : document.getElementById('contentInput').value.trim(),
@@ -235,7 +248,7 @@
 
     const students = state.students || {};
     const allEntries = Object.entries(students);
-    renderAnswersGrid(allEntries);
+    renderAnswersGrid(allEntries, allMessages);
 
     // Students who've been disconnected a while drop off the live list —
     // it goes back to "waiting for students" on its own, no manual reset
@@ -356,7 +369,9 @@
   const answerFilters = document.getElementById('answerFilters');
   let selectedAnswerId = 'all';
 
-  function renderAnswersGrid(entries) {
+  const REVISION_PREFIX = '🔄 Revision — ';
+
+  function renderAnswersGrid(entries, allMessages) {
     if (entries.length === 0) {
       answerFilters.innerHTML = '';
       answersGrid.innerHTML = '<p class="hint" style="text-align:center; padding:20px 0;">No one has written anything yet.</p>';
@@ -368,6 +383,13 @@
       selectedAnswerId = 'all';
     }
 
+    const revisionsByStudent = {};
+    (allMessages || []).forEach((m) => {
+      if (m.from === 'student' && m.studentId && m.text.startsWith(REVISION_PREFIX)) {
+        (revisionsByStudent[m.studentId] = revisionsByStudent[m.studentId] || []).push(m);
+      }
+    });
+
     answerFilters.innerHTML = [
       `<button class="filter-pill ${selectedAnswerId === 'all' ? 'active' : ''}" data-filter-id="all">All (${sorted.length})</button>`,
       ...sorted.map(([id, s]) => `<button class="filter-pill ${selectedAnswerId === id ? 'active' : ''}" data-filter-id="${id}">${escapeHtml(s.name)}${s.completed ? ' ✓' : ''}</button>`),
@@ -378,11 +400,24 @@
     answersGrid.innerHTML = toShow.map(([id, s]) => {
       const reading = (s.readingAnswerText || '').trim();
       const listening = (s.listeningAnswerText || '').trim();
+      const revisions = revisionsByStudent[id] || [];
+      const revisionsHtml = revisions.length ? `
+          <div class="answer-block">
+            <div class="answer-label">🔄 Revisions sent</div>
+            ${revisions.map((m) => {
+              const rest = m.text.slice(REVISION_PREFIX.length);
+              const splitAt = rest.indexOf('\n\n');
+              const title = splitAt === -1 ? rest : rest.slice(0, splitAt);
+              const body = splitAt === -1 ? '' : rest.slice(splitAt + 2);
+              return `<div class="answer-text" style="margin-bottom:6px;"><strong>${escapeHtml(title)}:</strong> ${escapeHtml(body)}</div>`;
+            }).join('')}
+          </div>` : '';
       return `
         <div class="answer-card" id="answer-card-${id}">
           <div class="answer-card-head">
             <span class="name">${escapeHtml(s.name)}</span>
             ${s.completed ? '<span class="badge done">✓ done</span>' : ''}
+            <button class="btn ghost small chat-action" data-action="answer-chat" data-id="${id}" data-name="${escapeHtml(s.name)}" title="Message ${escapeHtml(s.name)} privately" style="margin-left:auto;">💬</button>
           </div>
           <div class="answer-block">
             <div class="answer-label">📖 Reading / translation</div>
@@ -392,6 +427,7 @@
             <div class="answer-label">🎧 Listening</div>
             <div class="answer-text ${listening ? '' : 'empty'}">${listening ? escapeHtml(listening) : 'Nothing written yet'}</div>
           </div>
+          ${revisionsHtml}
         </div>`;
     }).join('');
   }
@@ -401,6 +437,12 @@
     if (!btn) return;
     selectedAnswerId = btn.dataset.filterId;
     refreshRoster();
+  });
+
+  answersGrid.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-action="answer-chat"]');
+    if (!btn) return;
+    openChat(btn.dataset.id, btn.dataset.name);
   });
 
   function playAlertBeep() {

@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>HomeworkFocus · Revise</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%94%84%3C/text%3E%3C/svg%3E" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div class="logo">🔄</div>
+    <div style="flex:1">
+      <h1 id="greeting">Hi!</h1>
+      <p>Fix something you got wrong and send it straight to your teacher.</p>
+    </div>
+  </div>
+
+  <a href="student.html" class="back-link">← Back to homework menu</a>
+
+  <div class="card">
+    <h2>Revise &amp; resubmit</h2>
+    <div class="field">
+      <label for="reviseTitle">What are you revising?</label>
+      <input type="text" id="reviseTitle" placeholder="e.g. Question 3, or Paragraph 2 translation" autocomplete="off" />
+    </div>
+    <div class="field">
+      <label for="reviseAnswer">Your corrected answer</label>
+      <textarea id="reviseAnswer" rows="10" placeholder="Type your revised translation or transcription here..."></textarea>
+    </div>
+    <button id="sendReviseBtn" class="btn primary">📤 Send to teacher</button>
+    <span id="reviseMsg" class="hint" style="margin-left:10px;"></span>
+  </div>
+
+  <div class="card">
+    <h2 style="font-size:16px;">Your revisions sent today</h2>
+    <div id="revisionHistory"><p class="hint">Nothing sent yet.</p></div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<button id="chatToggle" class="chat-fab" title="Message your teacher">💬</button>
+<div id="chatPanel" class="chat-panel" hidden>
+  <div class="chat-header">
+    <span>💬 Messages with your teacher</span>
+    <button id="chatClose" class="icon-btn">✕</button>
+  </div>
+  <div id="chatLog" class="chat-log"></div>
+  <div class="chat-input-row">
+    <input type="text" id="chatInput" placeholder="Type a message…" autocomplete="off" />
+    <button id="chatSendBtn" class="btn primary" style="padding:10px 16px;">Send</button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<script src="db.js"></script>
+<script src="revise.js"></script>
+</body>
+</html>

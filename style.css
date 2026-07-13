@@ -313,7 +313,7 @@ label { font-size: 13.5px; font-weight: 600; color: var(--text-dim); display: bl
 }
 .chat-header .icon-btn { background: none; border: none; color: white; font-size: 16px; cursor: pointer; }
 .chat-log { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
-.chat-bubble { max-width: 80%; padding: 9px 13px; border-radius: 14px; font-size: 13.5px; line-height: 1.4; word-wrap: break-word; }
+.chat-bubble { max-width: 80%; padding: 9px 13px; border-radius: 14px; font-size: 13.5px; line-height: 1.4; word-wrap: break-word; white-space: pre-wrap; }
 .chat-bubble.mine { align-self: flex-end; background: linear-gradient(135deg, var(--brand), #8b5cf6); color: white; border-bottom-right-radius: 4px; }
 .chat-bubble.theirs { align-self: flex-start; background: #eef0f8; color: var(--text); border-bottom-left-radius: 4px; }
 .chat-bubble .who { display:block; font-size: 10.5px; opacity: 0.75; margin-bottom: 2px; }
