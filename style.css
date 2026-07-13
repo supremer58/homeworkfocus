@@ -138,6 +138,7 @@ input:focus, textarea:focus, select:focus {
 
 label { font-size: 13.5px; font-weight: 600; color: var(--text-dim); display: block; margin-bottom: 8px; }
 .field { margin-bottom: 22px; }
+.word-count { font-size: 12.5px; color: var(--text-dim); text-align: right; margin-top: 6px; }
 
 .hint { font-size: 13.5px; color: var(--text-dim); line-height: 1.5; }
 .error-text { color: var(--danger); font-size: 13.5px; margin-top: 8px; }

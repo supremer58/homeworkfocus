@@ -395,6 +395,7 @@
         <div class="answer-card" id="answer-card-${id}">
           <div class="answer-card-head">
             <span class="name">${escapeHtml(s.name)}</span>
+            <span class="hint" title="Total active time" style="font-variant-numeric: tabular-nums; font-weight:700;">⏱ ${fmt(s.activeMs || 0)}</span>
             ${s.completed ? '<span class="badge done">✓ done</span>' : ''}
             <button class="btn ghost small chat-action" data-action="answer-chat" data-id="${id}" data-name="${escapeHtml(s.name)}" title="Message ${escapeHtml(s.name)} privately" style="margin-left:auto;">💬</button>
           </div>
