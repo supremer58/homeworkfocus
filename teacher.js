@@ -206,6 +206,7 @@
   }
 
   const ONLINE_TIMEOUT_MS = 10000;
+  const HIDE_AFTER_OFFLINE_MS = 60000;
   const IDLE_ALERT_MS = 120000;
   const alertedIdle = new Set();
   let assignmentsCache = {};
@@ -233,15 +234,21 @@
     });
 
     const students = state.students || {};
-    const entries = Object.entries(students);
-    renderAnswersGrid(entries);
+    const allEntries = Object.entries(students);
+    renderAnswersGrid(allEntries);
+
+    // Students who've been disconnected a while drop off the live list —
+    // it goes back to "waiting for students" on its own, no manual reset
+    // needed. Their time/answers stay intact for Reports and All Answers.
+    const now = Date.now();
+    const entries = allEntries.filter(([, s]) => (now - new Date(s.lastSeen).getTime()) < HIDE_AFTER_OFFLINE_MS);
+
     if (entries.length === 0) {
       roster.innerHTML = '<p class="hint" style="text-align:center; padding:20px 0;">🕐 Waiting for students to join — share the PIN or QR code above.</p>';
       document.getElementById('rosterSummary').textContent = '';
       currentIdleIds = [];
       return;
     }
-    const now = Date.now();
     entries.sort((a, b) => a[1].name.localeCompare(b[1].name));
 
     let onlineCount = 0, workingCount = 0, doneCount = 0;
