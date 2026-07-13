@@ -15,30 +15,29 @@
     btn.classList.add('ghost');
     btn.style.opacity = '0.5';
     btn.style.cursor = 'not-allowed';
-    btn.title = `${label} isn't assigned to you right now.`;
+    btn.title = `${label} hasn't been set up yet.`;
   }
 
-  async function loadAssignment() {
+  async function loadAssignments() {
     try {
-      const a = await db.getEffectiveAssignment(studentId);
-      if (!a) {
-        summary.textContent = 'No homework assigned yet — check with your teacher.';
-        disableButton(readingBtn, 'Reading homework');
-        disableButton(listeningBtn, 'Listening homework');
-        return;
-      }
-      summary.textContent = `Today's homework: ${a.title}`;
+      const [reading, listening] = await Promise.all([
+        db.getEffectiveAssignment(studentId, 'translation'),
+        db.getEffectiveAssignment(studentId, 'listening'),
+      ]);
+
+      const parts = [];
+      if (reading) parts.push(`📖 ${reading.title}`);
+      if (listening) parts.push(`🎧 ${listening.title}`);
+      summary.textContent = parts.length ? `Today's homework: ${parts.join(' · ')}` : 'No homework set up yet — check with your teacher.';
+
       readingBtn.href = 'reading.html';
       listeningBtn.href = 'listening.html';
-      if (a.type === 'translation') {
-        disableButton(listeningBtn, 'Listening homework');
-      } else if (a.type === 'listening') {
-        disableButton(readingBtn, 'Reading homework');
-      }
+      if (!reading) disableButton(readingBtn, 'Reading homework');
+      if (!listening) disableButton(listeningBtn, 'Listening homework');
     } catch (e) {
       summary.textContent = 'Could not reach the server. Check your internet connection.';
     }
   }
 
-  loadAssignment();
+  loadAssignments();
 })();

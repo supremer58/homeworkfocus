@@ -77,9 +77,9 @@ function initHomeworkPage(expectedType) {
   });
 
   async function loadAssignment() {
-    const a = await db.getEffectiveAssignment(studentId);
+    const a = await db.getEffectiveAssignment(studentId, expectedType);
 
-    if (!a || a.type !== expectedType) {
+    if (!a) {
       taskCard.hidden = true;
       mismatchCard.hidden = false;
       timerBadge.hidden = true;

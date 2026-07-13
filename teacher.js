@@ -53,30 +53,37 @@
   async function loadAssignments() {
     const data = await db.getAssignments();
     const assignments = data.assignments || {};
-    const currentId = data.currentAssignmentId;
+    const currentReadingId = data.currentReadingAssignmentId;
+    const currentListeningId = data.currentListeningAssignmentId;
     const entries = Object.entries(assignments);
     if (entries.length === 0) {
       assignmentList.innerHTML = '<p class="hint">No assignments yet — create one below.</p>';
     } else {
-      assignmentList.innerHTML = entries.map(([id, a]) => `
+      assignmentList.innerHTML = entries.map(([id, a]) => {
+        const isDefault = id === currentReadingId || id === currentListeningId;
+        return `
         <div class="roster-row">
-          <div class="name">${escapeHtml(a.title)} ${id === currentId ? '<span class="badge working">class default</span>' : ''}</div>
+          <div class="name">${escapeHtml(a.title)} ${isDefault ? '<span class="badge working">class default</span>' : ''}</div>
           <div class="meta">${a.type === 'listening' ? '🎧 listening' : '📝 translation'}</div>
           <div class="row-actions">
             <button class="btn ghost small" data-set-default="${id}" title="Set as class default">⭐</button>
             <button class="btn ghost small" data-edit="${id}" title="Edit">✎</button>
           </div>
-        </div>`).join('');
+        </div>`;
+      }).join('');
     }
-    return { assignments, currentId };
+    return { assignments, currentReadingId, currentListeningId };
   }
 
   assignmentList.addEventListener('click', async (e) => {
     const setDefaultId = e.target.closest('[data-set-default]')?.dataset.setDefault;
     const editId = e.target.closest('[data-edit]')?.dataset.edit;
     if (setDefaultId) {
-      await db.setDefaultAssignment(setDefaultId);
-      showToast('Class default updated ✓');
+      const data = await db.getAssignments();
+      const a = data.assignments[setDefaultId];
+      if (!a) return;
+      await db.setDefaultAssignment(a.type, setDefaultId);
+      showToast(`Class default updated for ${a.type === 'listening' ? 'listening' : 'reading'} ✓`);
       loadAssignments();
       populateStudentAssignmentOptions();
     } else if (editId) {
@@ -108,7 +115,7 @@
       requireMinTime: document.getElementById('requireMinTimeInput').checked,
     };
     const data = await db.saveAssignment(assignment);
-    await db.setDefaultAssignment(data.id);
+    await db.setDefaultAssignment(type, data.id);
 
     const pin = document.getElementById('pinField').value.trim();
     if (pin) {
@@ -239,7 +246,11 @@
 
     let onlineCount = 0, workingCount = 0, doneCount = 0;
     currentIdleIds = [];
-    const assignmentOptions = Object.entries(assignmentsCache)
+    const readingOptions = Object.entries(assignmentsCache)
+      .filter(([, a]) => a.type !== 'listening')
+      .map(([id, a]) => `<option value="${id}">${escapeHtml(a.title)}</option>`).join('');
+    const listeningOptions = Object.entries(assignmentsCache)
+      .filter(([, a]) => a.type === 'listening')
       .map(([id, a]) => `<option value="${id}">${escapeHtml(a.title)}</option>`).join('');
 
     roster.innerHTML = entries.map(([id, s]) => {
@@ -290,8 +301,6 @@
         dotClass = 'online';
       }
 
-      const currentAssignId = s.assignmentId || '';
-
       return `
         <div class="roster-row ${isActive ? 'active' : ''} ${idleTooLong ? 'alert' : ''}">
           <div class="status-dot ${dotClass}"></div>
@@ -305,11 +314,18 @@
             <button class="btn ghost small" data-action="reset" data-id="${id}" title="Reset timer">↺</button>
             <button class="btn ghost small chat-action ${hasUnreadMsg ? 'has-unread' : ''}" data-action="chat" data-id="${id}" data-name="${escapeHtml(s.name)}" title="Message ${escapeHtml(s.name)} privately${hasUnreadMsg ? ' (new message!)' : ''}">💬</button>
           </div>
-          <div style="flex-basis:100%; display:flex; align-items:center; gap:8px; margin-top:4px;">
-            <label class="hint" style="margin:0; white-space:nowrap;">Assignment:</label>
-            <select data-assign-select="${id}" style="width:auto; flex:1; min-width:140px; padding:6px 10px; font-size:13px;">
+          <div style="flex-basis:100%; display:flex; align-items:center; gap:8px; margin-top:4px; flex-wrap:wrap;">
+            <label class="hint" style="margin:0; white-space:nowrap;">📖 Reading:</label>
+            <select data-assign-select="${id}" data-track="translation" style="width:auto; flex:1; min-width:120px; padding:6px 10px; font-size:13px;">
               <option value="">Class default</option>
-              ${assignmentOptions}
+              ${readingOptions}
+            </select>
+          </div>
+          <div style="flex-basis:100%; display:flex; align-items:center; gap:8px; margin-top:4px; flex-wrap:wrap;">
+            <label class="hint" style="margin:0; white-space:nowrap;">🎧 Listening:</label>
+            <select data-assign-select="${id}" data-track="listening" style="width:auto; flex:1; min-width:120px; padding:6px 10px; font-size:13px;">
+              <option value="">Class default</option>
+              ${listeningOptions}
             </select>
           </div>
         </div>`;
@@ -317,10 +333,11 @@
 
     roster.querySelectorAll('[data-assign-select]').forEach((sel) => {
       const id = sel.dataset.assignSelect;
-      sel.value = students[id].assignmentId || '';
+      const track = sel.dataset.track;
+      sel.value = (track === 'listening' ? students[id].listeningAssignmentId : students[id].readingAssignmentId) || '';
       sel.addEventListener('change', async () => {
-        await db.assignStudent(id, sel.value || null);
-        showToast(`Assignment updated for ${students[id].name}`);
+        await db.assignStudent(id, track, sel.value || null);
+        showToast(`${track === 'listening' ? 'Listening' : 'Reading'} assignment updated for ${students[id].name}`);
       });
     });
 

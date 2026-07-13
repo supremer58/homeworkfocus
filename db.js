@@ -13,7 +13,8 @@ function studentRowToClient(row) {
     id: row.id,
     name: row.name,
     activeMs: row.active_ms,
-    assignmentId: row.assignment_id,
+    readingAssignmentId: row.reading_assignment_id,
+    listeningAssignmentId: row.listening_assignment_id,
     completed: row.completed,
     lastSeen: row.last_seen,
     joinedAt: row.joined_at,
@@ -25,6 +26,12 @@ function studentRowToClient(row) {
     hasPlayedAudio: row.has_played_audio,
     idleSince: row.idle_since,
   };
+}
+
+function assignmentColumnFor(trackType) {
+  return trackType === 'listening'
+    ? { settingsCol: 'current_listening_assignment_id', studentCol: 'listening_assignment_id' }
+    : { settingsCol: 'current_reading_assignment_id', studentCol: 'reading_assignment_id' };
 }
 
 function assignmentRowToClient(row) {
@@ -65,12 +72,13 @@ const db = {
     await supabaseClient.from('students').update(patch).eq('id', id);
   },
 
-  async getEffectiveAssignment(studentId) {
+  async getEffectiveAssignment(studentId, trackType) {
+    const { settingsCol, studentCol } = assignmentColumnFor(trackType);
     const { data: settings } = await supabaseClient.from('app_settings').select('*').eq('id', 1).single();
-    let assignId = settings ? settings.current_assignment_id : null;
+    let assignId = settings ? settings[settingsCol] : null;
     if (studentId) {
-      const { data: s } = await supabaseClient.from('students').select('assignment_id').eq('id', studentId).maybeSingle();
-      if (s && s.assignment_id) assignId = s.assignment_id;
+      const { data: s } = await supabaseClient.from('students').select(studentCol).eq('id', studentId).maybeSingle();
+      if (s && s[studentCol]) assignId = s[studentCol];
     }
     if (!assignId) return null;
     const { data: a } = await supabaseClient.from('assignments').select('*').eq('id', assignId).maybeSingle();
@@ -82,7 +90,11 @@ const db = {
     const { data: rows } = await supabaseClient.from('assignments').select('*');
     const assignments = {};
     (rows || []).forEach((r) => { assignments[r.id] = assignmentRowToClient(r); });
-    return { assignments, currentAssignmentId: settings ? settings.current_assignment_id : null };
+    return {
+      assignments,
+      currentReadingAssignmentId: settings ? settings.current_reading_assignment_id : null,
+      currentListeningAssignmentId: settings ? settings.current_listening_assignment_id : null,
+    };
   },
 
   async saveAssignment(a) {
@@ -94,12 +106,14 @@ const db = {
     return { id };
   },
 
-  async setDefaultAssignment(id) {
-    await supabaseClient.from('app_settings').update({ current_assignment_id: id }).eq('id', 1);
+  async setDefaultAssignment(trackType, id) {
+    const { settingsCol } = assignmentColumnFor(trackType);
+    await supabaseClient.from('app_settings').update({ [settingsCol]: id }).eq('id', 1);
   },
 
-  async assignStudent(studentId, assignmentId) {
-    await supabaseClient.from('students').update({ assignment_id: assignmentId }).eq('id', studentId);
+  async assignStudent(studentId, trackType, assignmentId) {
+    const { studentCol } = assignmentColumnFor(trackType);
+    await supabaseClient.from('students').update({ [studentCol]: assignmentId }).eq('id', studentId);
   },
 
   async setPin(pin) {
@@ -113,8 +127,11 @@ const db = {
     const assignmentsById = rowsToMap(assignmentRows);
     const today = new Date().toISOString().slice(0, 10);
     const historyRows = (students || []).map((s) => {
-      const assignId = s.assignment_id || (settings ? settings.current_assignment_id : null);
-      const a = assignId ? assignmentsById[assignId] : null;
+      const readingId = s.reading_assignment_id || (settings ? settings.current_reading_assignment_id : null);
+      const listeningId = s.listening_assignment_id || (settings ? settings.current_listening_assignment_id : null);
+      const readingTitle = readingId && assignmentsById[readingId] ? assignmentsById[readingId].title : null;
+      const listeningTitle = listeningId && assignmentsById[listeningId] ? assignmentsById[listeningId].title : null;
+      const a = { title: [readingTitle, listeningTitle].filter(Boolean).join(' / ') };
       return {
         date: today, student_id: s.id, name: s.name,
         assignment_title: a ? a.title : '',
