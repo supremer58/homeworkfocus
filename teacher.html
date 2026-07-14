@@ -32,13 +32,29 @@
 
   <div class="card">
     <h2>Class settings</h2>
-    <p class="hint" style="margin-bottom:14px;">Students choose their own reading/listening topics now — there's no library to manage. Just set the PIN they'll use to join.</p>
+    <p class="hint" style="margin-bottom:14px;">Students pick their own reading topic. Just set the PIN they'll use to join.</p>
     <div class="field" style="max-width:200px;">
       <label for="pinField">Class PIN</label>
       <input type="text" id="pinField" placeholder="1234" />
     </div>
     <button id="savePinBtn" class="btn primary">Save PIN</button>
     <span id="saveMsg" class="hint" style="margin-left:10px;"></span>
+  </div>
+
+  <div class="card">
+    <h2>🎧 Listening track</h2>
+    <p class="hint" style="margin-bottom:14px;">Upload one audio file for the whole class to listen to and translate. No links to type — just pick a file.</p>
+    <p class="hint" id="currentTrackText" style="margin-bottom:14px;"></p>
+    <div class="field">
+      <label for="trackTitleInput">Track title</label>
+      <input type="text" id="trackTitleInput" placeholder="e.g. Unit 5 dialogue" />
+    </div>
+    <div class="field">
+      <label for="trackFileInput">Audio file</label>
+      <input type="file" id="trackFileInput" accept="audio/*" />
+    </div>
+    <button id="uploadTrackBtn" class="btn primary">Upload &amp; set for class</button>
+    <span id="uploadMsg" class="hint" style="margin-left:10px;"></span>
   </div>
 
   <div class="card">

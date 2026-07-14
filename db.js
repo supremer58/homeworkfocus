@@ -47,14 +47,32 @@ const db = {
 
     // Title columns may not exist yet on older databases — save them
     // separately so a missing column never blocks the answer text above.
-    if (typeof title === 'string') {
-      const titlePatch = taskType === 'listening' ? { listening_title: title } : { reading_title: title };
-      await supabaseClient.from('students').update(titlePatch).eq('id', id);
+    // Listening's title is the teacher-set track title, not per-student.
+    if (typeof title === 'string' && taskType !== 'listening') {
+      await supabaseClient.from('students').update({ reading_title: title }).eq('id', id);
     }
   },
 
   async setPin(pin) {
     await supabaseClient.from('app_settings').update({ pin }).eq('id', 1);
+  },
+
+  async getListeningTrack() {
+    const { data } = await supabaseClient.from('app_settings').select('*').eq('id', 1).single();
+    if (!data) return null;
+    return { title: data.listening_track_title || '', url: data.listening_track_url || '' };
+  },
+
+  async setListeningTrack(title, url) {
+    await supabaseClient.from('app_settings').update({ listening_track_title: title, listening_track_url: url }).eq('id', 1);
+  },
+
+  async uploadAudio(file) {
+    const path = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_')}`;
+    const { error } = await supabaseClient.storage.from('audio').upload(path, file);
+    if (error) return { error: error.message };
+    const { data } = supabaseClient.storage.from('audio').getPublicUrl(path);
+    return { url: data.publicUrl };
   },
 
   async removeStudent(id) {

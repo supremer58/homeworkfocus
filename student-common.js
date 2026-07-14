@@ -1,8 +1,8 @@
 // Shared logic for the dedicated reading.html and listening.html pages.
 // expectedType is 'translation' (reading) or 'listening'.
-// Students pick their own topic/title — there is no teacher-assigned
-// passage or audio anymore. The teacher only sees whether they're
-// online/working and what they've written.
+// Reading: students pick their own topic/title and write freely.
+// Listening: the teacher uploads one audio track (with a title) for the
+// whole class; students just listen and type their translation.
 function initHomeworkPage(expectedType) {
   const studentId = sessionStorage.getItem('hf-student-id');
   const studentName = sessionStorage.getItem('hf-student-name');
@@ -17,11 +17,15 @@ function initHomeworkPage(expectedType) {
   const doneBtn = document.getElementById('doneBtn');
   const doneMsg = document.getElementById('doneMsg');
   const toast = document.getElementById('toast');
-  const titleInput = document.getElementById('titleInput');
+  const titleInput = document.getElementById('titleInput'); // reading only
+  const mismatchCard = document.getElementById('mismatchCard'); // listening only
+  const taskCard = document.getElementById('taskCard'); // listening only
+  const assignmentTitle = document.getElementById('assignmentTitle'); // listening only
 
   const SUGGESTED_MS = 15 * 60 * 1000;
   let completed = false;
   let lastResetToken = 0;
+  let hasPlayedAudio = false;
 
   const pausedBanner = document.getElementById('pausedBanner');
   const chatToggle = document.getElementById('chatToggle');
@@ -44,9 +48,10 @@ function initHomeworkPage(expectedType) {
     return String(m).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
   }
 
+  const answerBox = document.getElementById(expectedType === 'listening' ? 'listenAnswerBox' : 'answerBox');
+
   function currentAnswerText() {
-    const box = document.getElementById(expectedType === 'listening' ? 'listenAnswerBox' : 'answerBox');
-    return box ? box.value : '';
+    return answerBox ? answerBox.value : '';
   }
 
   function updateWordCount() {
@@ -72,9 +77,8 @@ function initHomeworkPage(expectedType) {
     },
   });
 
-  const answerBox = document.getElementById(expectedType === 'listening' ? 'listenAnswerBox' : 'answerBox');
   answerBox.addEventListener('input', () => { saveProgressSoon(); updateWordCount(); });
-  titleInput.addEventListener('input', () => { saveProgressSoon(); });
+  if (titleInput) titleInput.addEventListener('input', () => { saveProgressSoon(); });
 
   let saveTimeout = null;
   function saveProgressSoon() {
@@ -90,7 +94,7 @@ function initHomeworkPage(expectedType) {
         isActive: timer.getIsActive(),
         completed,
         answerText: currentAnswerText(),
-        title: titleInput.value,
+        title: titleInput ? titleInput.value : undefined,
         taskType: expectedType,
         idleSince: idleSinceLocal,
       });
@@ -106,6 +110,40 @@ function initHomeworkPage(expectedType) {
     await saveProgress();
   });
 
+  async function loadListeningTrack() {
+    const track = await db.getListeningTrack();
+    if (!track || !track.url) {
+      taskCard.hidden = true;
+      mismatchCard.hidden = false;
+      timerBadge.hidden = true;
+      return false;
+    }
+    mismatchCard.hidden = true;
+    taskCard.hidden = false;
+    timerBadge.hidden = false;
+    assignmentTitle.textContent = track.title || "Today's listening track";
+
+    const audioEl = document.getElementById('audioTrack');
+    audioEl.src = track.url;
+    timer.watchMedia(audioEl);
+    audioEl.addEventListener('ended', () => { hasPlayedAudio = true; });
+
+    const replayBtn = document.getElementById('replayBtn');
+    if (replayBtn) {
+      replayBtn.addEventListener('click', () => {
+        audioEl.currentTime = 0;
+        audioEl.play();
+      });
+    }
+    const speedSelect = document.getElementById('speedSelect');
+    if (speedSelect) {
+      speedSelect.addEventListener('change', () => {
+        audioEl.playbackRate = parseFloat(speedSelect.value);
+      });
+    }
+    return true;
+  }
+
   async function resumePriorProgress() {
     try {
       const s = await db.getStudent(studentId);
@@ -114,8 +152,10 @@ function initHomeworkPage(expectedType) {
         timer.setActiveMs(s.activeMs);
         timerDisplay.textContent = fmt(s.activeMs);
       }
-      const priorTitle = expectedType === 'listening' ? s.listeningTitle : s.readingTitle;
-      if (s && priorTitle && !titleInput.value) titleInput.value = priorTitle;
+      if (titleInput) {
+        const priorTitle = s.readingTitle;
+        if (priorTitle && !titleInput.value) titleInput.value = priorTitle;
+      }
       const priorAnswer = expectedType === 'listening' ? s.listeningAnswerText : s.readingAnswerText;
       if (s && priorAnswer && !answerBox.value) answerBox.value = priorAnswer;
       if (s && s.completed) {
@@ -211,7 +251,15 @@ function initHomeworkPage(expectedType) {
   chatSendBtn.addEventListener('click', sendChat);
   chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendChat(); });
 
-  resumePriorProgress();
+  async function init() {
+    if (expectedType === 'listening') {
+      const hasTrack = await loadListeningTrack();
+      if (!hasTrack) return;
+    }
+    resumePriorProgress();
+  }
+
+  init();
   setInterval(saveProgress, 4000);
   setInterval(pollControl, 3000);
   setInterval(pollMessages, 3000);
