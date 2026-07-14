@@ -31,44 +31,13 @@
   </div>
 
   <div class="card">
-    <h2>Assignment library</h2>
-    <div id="assignmentList" class="roster" style="margin-bottom:18px;"></div>
-
-    <h2 style="font-size:16px;">Add / edit an assignment</h2>
-    <div class="field">
-      <label for="titleInput">Title</label>
-      <input type="text" id="titleInput" placeholder="e.g. Translate: Unit 5 dialogue" />
-    </div>
-    <div class="field">
-      <label>Type</label>
-      <select id="typeInput">
-        <option value="translation">Translation passage</option>
-        <option value="listening">Listening track</option>
-      </select>
-    </div>
-    <div class="field" id="passageField">
-      <label for="contentInput">Passage text</label>
-      <textarea id="contentInput" rows="5" placeholder="Paste the passage students should translate..."></textarea>
-    </div>
-    <div class="field" id="audioField" hidden>
-      <label for="audioUrlInput">Audio URL</label>
-      <input type="text" id="audioUrlInput" placeholder="https://... link to the listening track" />
-    </div>
-    <div class="field" style="max-width:200px;">
-      <label for="targetMinInput">Suggested minutes</label>
-      <input type="text" id="targetMinInput" value="15" inputmode="numeric" />
-    </div>
-    <div class="field">
-      <label class="toggle-row">
-        <input type="checkbox" id="requireMinTimeInput" style="width:auto; margin-right:8px;" />
-        Require the suggested time before students can mark it done
-      </label>
-    </div>
+    <h2>Class settings</h2>
+    <p class="hint" style="margin-bottom:14px;">Students choose their own reading/listening topics now — there's no library to manage. Just set the PIN they'll use to join.</p>
     <div class="field" style="max-width:200px;">
       <label for="pinField">Class PIN</label>
       <input type="text" id="pinField" placeholder="1234" />
     </div>
-    <button id="saveAssignmentBtn" class="btn primary">Save to library &amp; set as class default</button>
+    <button id="savePinBtn" class="btn primary">Save PIN</button>
     <span id="saveMsg" class="hint" style="margin-left:10px;"></span>
   </div>
 

@@ -1,5 +1,8 @@
 // Shared logic for the dedicated reading.html and listening.html pages.
 // expectedType is 'translation' (reading) or 'listening'.
+// Students pick their own topic/title — there is no teacher-assigned
+// passage or audio anymore. The teacher only sees whether they're
+// online/working and what they've written.
 function initHomeworkPage(expectedType) {
   const studentId = sessionStorage.getItem('hf-student-id');
   const studentName = sessionStorage.getItem('hf-student-name');
@@ -13,17 +16,12 @@ function initHomeworkPage(expectedType) {
   const progressLabel = document.getElementById('progressLabel');
   const doneBtn = document.getElementById('doneBtn');
   const doneMsg = document.getElementById('doneMsg');
-  const doneHint = document.getElementById('doneHint');
   const toast = document.getElementById('toast');
-  const mismatchCard = document.getElementById('mismatchCard');
-  const taskCard = document.getElementById('taskCard');
+  const titleInput = document.getElementById('titleInput');
 
+  const SUGGESTED_MS = 15 * 60 * 1000;
   let completed = false;
-  let targetMs = 15 * 60 * 1000;
-  let requireMinTime = false;
-  let hasPlayedAudio = false;
   let lastResetToken = 0;
-  let lastSeenMsgCount = 0;
 
   const pausedBanner = document.getElementById('pausedBanner');
   const chatToggle = document.getElementById('chatToggle');
@@ -59,24 +57,14 @@ function initHomeworkPage(expectedType) {
     wordCountEl.textContent = `${count} word${count === 1 ? '' : 's'}`;
   }
 
-  function updateDoneGate() {
-    if (completed) return;
-    const reasons = [];
-    if (requireMinTime && timer.getActiveMs() < targetMs) reasons.push('reach the suggested time');
-    if (expectedType === 'listening' && !hasPlayedAudio) reasons.push('listen to the track at least once');
-    doneBtn.disabled = reasons.length > 0;
-    doneHint.textContent = reasons.length > 0 ? `Finish this first: ${reasons.join(' and ')}.` : '';
-  }
-
   let idleSinceLocal = null;
   const timer = createActivityTimer({
     idleTimeoutMs: 6000,
     onTick: (ms) => {
       timerDisplay.textContent = fmt(ms);
-      const pct = Math.min(100, Math.round((ms / targetMs) * 100));
+      const pct = Math.min(100, Math.round((ms / SUGGESTED_MS) * 100));
       progressFill.style.width = pct + '%';
       progressLabel.textContent = pct >= 100 ? 'Suggested time reached — nice work!' : `${pct}% toward suggested time`;
-      updateDoneGate();
     },
     onStateChange: (active) => {
       timerBadge.classList.toggle('paused', !active);
@@ -84,51 +72,9 @@ function initHomeworkPage(expectedType) {
     },
   });
 
-  async function loadAssignment() {
-    const a = await db.getEffectiveAssignment(studentId, expectedType);
-
-    if (!a) {
-      taskCard.hidden = true;
-      mismatchCard.hidden = false;
-      timerBadge.hidden = true;
-      return null;
-    }
-    mismatchCard.hidden = true;
-    taskCard.hidden = false;
-    timerBadge.hidden = false;
-
-    if (a.targetMinutes) targetMs = a.targetMinutes * 60 * 1000;
-    requireMinTime = !!a.requireMinTime;
-    document.getElementById('assignmentTitle').textContent = a.title || 'Today\'s homework';
-
-    if (expectedType === 'listening') {
-      const audioEl = document.getElementById('audioTrack');
-      audioEl.src = a.content;
-      timer.watchMedia(audioEl);
-      audioEl.addEventListener('ended', () => { hasPlayedAudio = true; updateDoneGate(); });
-      document.getElementById('listenAnswerBox').addEventListener('input', () => { saveProgressSoon(); updateWordCount(); });
-
-      const replayBtn = document.getElementById('replayBtn');
-      if (replayBtn) {
-        replayBtn.addEventListener('click', () => {
-          audioEl.currentTime = 0;
-          audioEl.play();
-        });
-      }
-      const speedSelect = document.getElementById('speedSelect');
-      if (speedSelect) {
-        speedSelect.addEventListener('change', () => {
-          audioEl.playbackRate = parseFloat(speedSelect.value);
-        });
-      }
-    } else {
-      document.getElementById('passageText').textContent = a.content || '';
-      document.getElementById('answerBox').addEventListener('input', () => { saveProgressSoon(); updateWordCount(); });
-    }
-    updateDoneGate();
-    updateWordCount();
-    return a;
-  }
+  const answerBox = document.getElementById(expectedType === 'listening' ? 'listenAnswerBox' : 'answerBox');
+  answerBox.addEventListener('input', () => { saveProgressSoon(); updateWordCount(); });
+  titleInput.addEventListener('input', () => { saveProgressSoon(); });
 
   let saveTimeout = null;
   function saveProgressSoon() {
@@ -144,8 +90,8 @@ function initHomeworkPage(expectedType) {
         isActive: timer.getIsActive(),
         completed,
         answerText: currentAnswerText(),
+        title: titleInput.value,
         taskType: expectedType,
-        hasPlayedAudio,
         idleSince: idleSinceLocal,
       });
     } catch (e) { /* offline blip, will retry on next tick */ }
@@ -156,7 +102,6 @@ function initHomeworkPage(expectedType) {
     completed = true;
     doneBtn.disabled = true;
     doneMsg.textContent = 'Marked as done — nice work!';
-    doneHint.textContent = '';
     showToast('🎉 Great job! Your teacher can see you finished.');
     await saveProgress();
   });
@@ -169,12 +114,10 @@ function initHomeworkPage(expectedType) {
         timer.setActiveMs(s.activeMs);
         timerDisplay.textContent = fmt(s.activeMs);
       }
-      if (s && s.hasPlayedAudio) hasPlayedAudio = true;
+      const priorTitle = expectedType === 'listening' ? s.listeningTitle : s.readingTitle;
+      if (s && priorTitle && !titleInput.value) titleInput.value = priorTitle;
       const priorAnswer = expectedType === 'listening' ? s.listeningAnswerText : s.readingAnswerText;
-      if (s && priorAnswer) {
-        const box = document.getElementById(expectedType === 'listening' ? 'listenAnswerBox' : 'answerBox');
-        if (box && !box.value) box.value = priorAnswer;
-      }
+      if (s && priorAnswer && !answerBox.value) answerBox.value = priorAnswer;
       if (s && s.completed) {
         completed = true;
         doneBtn.disabled = true;
@@ -182,7 +125,6 @@ function initHomeworkPage(expectedType) {
       }
       if (s && typeof s.resetToken === 'number') lastResetToken = s.resetToken;
       applyControl(s);
-      updateDoneGate();
       updateWordCount();
     } catch (e) { /* fresh start if this fails */ }
   }
@@ -196,7 +138,6 @@ function initHomeworkPage(expectedType) {
       progressFill.style.width = '0%';
       progressLabel.textContent = '0% toward suggested time';
       showToast('⏱ Your teacher reset your timer.');
-      updateDoneGate();
     }
     timer.setTeacherPaused(!!s.paused);
     pausedBanner.hidden = !s.paused;
@@ -227,6 +168,7 @@ function initHomeworkPage(expectedType) {
     return String(s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
   }
 
+  let lastSeenMsgCount = 0;
   let lastSeenMsgCountInit = false;
   async function pollMessages() {
     try {
@@ -269,7 +211,7 @@ function initHomeworkPage(expectedType) {
   chatSendBtn.addEventListener('click', sendChat);
   chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendChat(); });
 
-  loadAssignment().then((a) => { if (a) resumePriorProgress(); });
+  resumePriorProgress();
   setInterval(saveProgress, 4000);
   setInterval(pollControl, 3000);
   setInterval(pollMessages, 3000);

@@ -1,48 +1,23 @@
 // Data layer backed by Supabase — replaces the old local-server REST API.
 // Every function here mirrors what the old /api/* endpoints used to do.
 
-function rowsToMap(rows) {
-  const map = {};
-  (rows || []).forEach((r) => { map[r.id] = r; });
-  return map;
-}
-
 function studentRowToClient(row) {
   if (!row) return null;
   return {
     id: row.id,
     name: row.name,
     activeMs: row.active_ms,
-    readingAssignmentId: row.reading_assignment_id,
-    listeningAssignmentId: row.listening_assignment_id,
     completed: row.completed,
     lastSeen: row.last_seen,
     joinedAt: row.joined_at,
     isActive: row.is_active,
     paused: row.paused,
     resetToken: row.reset_token,
+    readingTitle: row.reading_title,
+    listeningTitle: row.listening_title,
     readingAnswerText: row.reading_answer_text,
     listeningAnswerText: row.listening_answer_text,
-    hasPlayedAudio: row.has_played_audio,
     idleSince: row.idle_since,
-  };
-}
-
-function assignmentColumnFor(trackType) {
-  return trackType === 'listening'
-    ? { settingsCol: 'current_listening_assignment_id', studentCol: 'listening_assignment_id' }
-    : { settingsCol: 'current_reading_assignment_id', studentCol: 'reading_assignment_id' };
-}
-
-function assignmentRowToClient(row) {
-  if (!row) return null;
-  return {
-    id: row.id,
-    type: row.type,
-    title: row.title,
-    content: row.content,
-    targetMinutes: row.target_minutes,
-    requireMinTime: row.require_min_time,
   };
 }
 
@@ -61,84 +36,50 @@ const db = {
     return studentRowToClient(data);
   },
 
-  async saveActivity({ id, activeMs, isActive, completed, answerText, taskType, hasPlayedAudio, idleSince }) {
+  async saveActivity({ id, activeMs, isActive, completed, answerText, title, taskType, idleSince }) {
     const patch = { active_ms: activeMs, is_active: isActive, completed, last_seen: new Date().toISOString() };
     if (typeof idleSince !== 'undefined') patch.idle_since = idleSince;
     if (typeof answerText === 'string') {
       if (taskType === 'listening') patch.listening_answer_text = answerText;
       else patch.reading_answer_text = answerText;
     }
-    if (typeof hasPlayedAudio === 'boolean') patch.has_played_audio = hasPlayedAudio;
     await supabaseClient.from('students').update(patch).eq('id', id);
-  },
 
-  async getEffectiveAssignment(studentId, trackType) {
-    const { settingsCol, studentCol } = assignmentColumnFor(trackType);
-    const { data: settings } = await supabaseClient.from('app_settings').select('*').eq('id', 1).single();
-    let assignId = settings ? settings[settingsCol] : null;
-    if (studentId) {
-      const { data: s } = await supabaseClient.from('students').select(studentCol).eq('id', studentId).maybeSingle();
-      if (s && s[studentCol]) assignId = s[studentCol];
+    // Title columns may not exist yet on older databases — save them
+    // separately so a missing column never blocks the answer text above.
+    if (typeof title === 'string') {
+      const titlePatch = taskType === 'listening' ? { listening_title: title } : { reading_title: title };
+      await supabaseClient.from('students').update(titlePatch).eq('id', id);
     }
-    if (!assignId) return null;
-    const { data: a } = await supabaseClient.from('assignments').select('*').eq('id', assignId).maybeSingle();
-    return assignmentRowToClient(a);
-  },
-
-  async getAssignments() {
-    const { data: settings } = await supabaseClient.from('app_settings').select('*').eq('id', 1).single();
-    const { data: rows } = await supabaseClient.from('assignments').select('*');
-    const assignments = {};
-    (rows || []).forEach((r) => { assignments[r.id] = assignmentRowToClient(r); });
-    return {
-      assignments,
-      currentReadingAssignmentId: settings ? settings.current_reading_assignment_id : null,
-      currentListeningAssignmentId: settings ? settings.current_listening_assignment_id : null,
-    };
-  },
-
-  async saveAssignment(a) {
-    const id = a.id || ('a-' + Date.now());
-    await supabaseClient.from('assignments').upsert({
-      id, type: a.type, title: a.title, content: a.content,
-      target_minutes: a.targetMinutes, require_min_time: a.requireMinTime,
-    });
-    return { id };
-  },
-
-  async setDefaultAssignment(trackType, id) {
-    const { settingsCol } = assignmentColumnFor(trackType);
-    await supabaseClient.from('app_settings').update({ [settingsCol]: id }).eq('id', 1);
-  },
-
-  async assignStudent(studentId, trackType, assignmentId) {
-    const { studentCol } = assignmentColumnFor(trackType);
-    await supabaseClient.from('students').update({ [studentCol]: assignmentId }).eq('id', studentId);
   },
 
   async setPin(pin) {
     await supabaseClient.from('app_settings').update({ pin }).eq('id', 1);
   },
 
-  async clearRoster() {
-    const { data: students } = await supabaseClient.from('students').select('*');
-    const { data: settings } = await supabaseClient.from('app_settings').select('*').eq('id', 1).single();
-    const { data: assignmentRows } = await supabaseClient.from('assignments').select('*');
-    const assignmentsById = rowsToMap(assignmentRows);
-    const today = new Date().toISOString().slice(0, 10);
-    const historyRows = (students || []).map((s) => {
-      const readingId = s.reading_assignment_id || (settings ? settings.current_reading_assignment_id : null);
-      const listeningId = s.listening_assignment_id || (settings ? settings.current_listening_assignment_id : null);
-      const readingTitle = readingId && assignmentsById[readingId] ? assignmentsById[readingId].title : null;
-      const listeningTitle = listeningId && assignmentsById[listeningId] ? assignmentsById[listeningId].title : null;
-      const a = { title: [readingTitle, listeningTitle].filter(Boolean).join(' / ') };
-      return {
-        date: today, student_id: s.id, name: s.name,
-        assignment_title: a ? a.title : '',
+  async removeStudent(id) {
+    const { data: s } = await supabaseClient.from('students').select('*').eq('id', id).maybeSingle();
+    if (s) {
+      await supabaseClient.from('history').insert({
+        date: new Date().toISOString().slice(0, 10), student_id: s.id, name: s.name,
+        assignment_title: [s.reading_title, s.listening_title].filter(Boolean).join(' / '),
         active_ms: s.active_ms, completed: s.completed,
         reading_answer_text: s.reading_answer_text, listening_answer_text: s.listening_answer_text,
-      };
-    });
+      });
+    }
+    await supabaseClient.from('messages').delete().eq('student_id', id);
+    await supabaseClient.from('students').delete().eq('id', id);
+  },
+
+  async clearRoster() {
+    const { data: students } = await supabaseClient.from('students').select('*');
+    const today = new Date().toISOString().slice(0, 10);
+    const historyRows = (students || []).map((s) => ({
+      date: today, student_id: s.id, name: s.name,
+      assignment_title: [s.reading_title, s.listening_title].filter(Boolean).join(' / '),
+      active_ms: s.active_ms, completed: s.completed,
+      reading_answer_text: s.reading_answer_text, listening_answer_text: s.listening_answer_text,
+    }));
     if (historyRows.length) await supabaseClient.from('history').insert(historyRows);
     await supabaseClient.from('students').delete().neq('id', '');
   },

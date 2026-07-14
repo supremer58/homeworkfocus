@@ -1,7 +1,4 @@
 (function () {
-  const typeInput = document.getElementById('typeInput');
-  const passageField = document.getElementById('passageField');
-  const audioField = document.getElementById('audioField');
   const saveMsg = document.getElementById('saveMsg');
   const roster = document.getElementById('roster');
   const joinInfo = document.getElementById('joinInfo');
@@ -12,12 +9,6 @@
     toast.classList.add('show');
     setTimeout(() => toast.classList.remove('show'), 2600);
   }
-
-  typeInput.addEventListener('change', () => {
-    const isListening = typeInput.value === 'listening';
-    passageField.hidden = isListening;
-    audioField.hidden = !isListening;
-  });
 
   const joinUrl = `${window.location.origin}/`;
   joinInfo.textContent = `Students join at ${joinUrl}`;
@@ -46,119 +37,18 @@
     }
   });
 
-  // ---- Assignment library ----
-  const assignmentList = document.getElementById('assignmentList');
-  let editingId = null;
-
-  async function loadAssignments() {
-    const data = await db.getAssignments();
-    const assignments = data.assignments || {};
-    const currentReadingId = data.currentReadingAssignmentId;
-    const currentListeningId = data.currentListeningAssignmentId;
-    const entries = Object.entries(assignments);
-    if (entries.length === 0) {
-      assignmentList.innerHTML = '<p class="hint">No assignments yet — create one below.</p>';
-    } else {
-      assignmentList.innerHTML = entries.map(([id, a]) => {
-        const isDefault = id === currentReadingId || id === currentListeningId;
-        return `
-        <div class="roster-row">
-          <div class="name">${escapeHtml(a.title)} ${isDefault ? '<span class="badge working">class default</span>' : ''}</div>
-          <div class="meta">${a.type === 'listening' ? '🎧 listening' : '📝 translation'}</div>
-          <div class="row-actions">
-            <button class="btn ghost small" data-set-default="${id}" title="Set as class default">⭐</button>
-            <button class="btn ghost small" data-edit="${id}" title="Edit">✎</button>
-          </div>
-        </div>`;
-      }).join('');
-    }
-    return { assignments, currentReadingId, currentListeningId };
-  }
-
-  assignmentList.addEventListener('click', async (e) => {
-    const setDefaultId = e.target.closest('[data-set-default]')?.dataset.setDefault;
-    const editId = e.target.closest('[data-edit]')?.dataset.edit;
-    if (setDefaultId) {
-      const data = await db.getAssignments();
-      const a = data.assignments[setDefaultId];
-      if (!a) return;
-      await db.setDefaultAssignment(a.type, setDefaultId);
-      showToast(`Class default updated for ${a.type === 'listening' ? 'listening' : 'reading'} ✓`);
-      loadAssignments();
-      populateStudentAssignmentOptions();
-    } else if (editId) {
-      const data = await db.getAssignments();
-      const a = data.assignments[editId];
-      if (!a) return;
-      editingId = editId;
-      document.getElementById('titleInput').value = a.title || '';
-      typeInput.value = a.type || 'translation';
-      typeInput.dispatchEvent(new Event('change'));
-      document.getElementById('contentInput').value = a.type === 'listening' ? '' : (a.content || '');
-      document.getElementById('audioUrlInput').value = a.type === 'listening' ? (a.content || '') : '';
-      document.getElementById('targetMinInput').value = a.targetMinutes || 15;
-      document.getElementById('requireMinTimeInput').checked = !!a.requireMinTime;
-      window.scrollTo({ top: assignmentList.getBoundingClientRect().bottom + window.scrollY, behavior: 'smooth' });
-    }
-  });
-
-  document.getElementById('saveAssignmentBtn').addEventListener('click', async () => {
-    const type = typeInput.value;
-    const title = document.getElementById('titleInput').value.trim() || 'Untitled assignment';
-
-    // Saving with a title that matches an existing assignment of the same
-    // type updates that one in place, instead of creating a duplicate.
-    let targetId = editingId;
-    if (!targetId) {
-      const existing = await db.getAssignments();
-      const match = Object.values(existing.assignments || {}).find(
-        (a) => a.type === type && a.title.trim().toLowerCase() === title.toLowerCase()
-      );
-      if (match) targetId = match.id;
-    }
-
-    const assignment = {
-      id: targetId || undefined,
-      type,
-      title,
-      content: type === 'listening'
-        ? document.getElementById('audioUrlInput').value.trim()
-        : document.getElementById('contentInput').value.trim(),
-      targetMinutes: parseInt(document.getElementById('targetMinInput').value, 10) || 15,
-      requireMinTime: document.getElementById('requireMinTimeInput').checked,
-    };
-    const data = await db.saveAssignment(assignment);
-    await db.setDefaultAssignment(type, data.id);
-
+  // ---- Class PIN ----
+  document.getElementById('savePinBtn').addEventListener('click', async () => {
     const pin = document.getElementById('pinField').value.trim();
-    if (pin) {
-      await db.setPin(pin);
-    }
-    try {
-      localStorage.setItem('hf-last-assignment-settings', JSON.stringify({
-        targetMinutes: assignment.targetMinutes, requireMinTime: assignment.requireMinTime,
-      }));
-    } catch (e) { /* localStorage unavailable, skip remembering */ }
-    editingId = null;
+    if (!pin) return;
+    await db.setPin(pin);
     saveMsg.textContent = 'Saved ✓';
     setTimeout(() => saveMsg.textContent = '', 2000);
-    loadAssignments();
-    populateStudentAssignmentOptions();
   });
 
   async function loadPin() {
     const state = await db.getState();
     document.getElementById('pinField').value = state.pin || '';
-  }
-
-  function applyRememberedSettings() {
-    try {
-      const saved = JSON.parse(localStorage.getItem('hf-last-assignment-settings') || 'null');
-      if (saved) {
-        document.getElementById('targetMinInput').value = saved.targetMinutes || 15;
-        document.getElementById('requireMinTimeInput').checked = !!saved.requireMinTime;
-      }
-    } catch (e) { /* ignore malformed storage */ }
   }
 
   // ---- Broadcast ----
@@ -222,18 +112,12 @@
   const HIDE_AFTER_OFFLINE_MS = 60000;
   const IDLE_ALERT_MS = 120000;
   const alertedIdle = new Set();
-  let assignmentsCache = {};
   let currentIdleIds = [];
 
   let viewedMsgCounts = {};
   try { viewedMsgCounts = JSON.parse(localStorage.getItem('hf-viewed-msg-counts') || '{}'); } catch (e) { /* ignore */ }
   function saveViewedMsgCounts() {
     try { localStorage.setItem('hf-viewed-msg-counts', JSON.stringify(viewedMsgCounts)); } catch (e) { /* ignore */ }
-  }
-
-  async function populateStudentAssignmentOptions() {
-    const data = await db.getAssignments();
-    assignmentsCache = data.assignments || {};
   }
 
   async function refreshRoster() {
@@ -266,12 +150,6 @@
 
     let onlineCount = 0, workingCount = 0, doneCount = 0;
     currentIdleIds = [];
-    const readingOptions = Object.entries(assignmentsCache)
-      .filter(([, a]) => a.type !== 'listening')
-      .map(([id, a]) => `<option value="${id}">${escapeHtml(a.title)}</option>`).join('');
-    const listeningOptions = Object.entries(assignmentsCache)
-      .filter(([, a]) => a.type === 'listening')
-      .map(([id, a]) => `<option value="${id}">${escapeHtml(a.title)}</option>`).join('');
 
     roster.innerHTML = entries.map(([id, s]) => {
       const lastSeenMs = now - new Date(s.lastSeen).getTime();
@@ -333,33 +211,10 @@
             <button class="btn ghost small" data-action="${s.paused ? 'resume' : 'pause'}" data-id="${id}" title="${s.paused ? 'Resume timer' : 'Pause timer'}">${s.paused ? '▶' : '⏸'}</button>
             <button class="btn ghost small" data-action="reset" data-id="${id}" title="Reset timer">↺</button>
             <button class="btn ghost small chat-action ${hasUnreadMsg ? 'has-unread' : ''}" data-action="chat" data-id="${id}" data-name="${escapeHtml(s.name)}" title="Message ${escapeHtml(s.name)} privately${hasUnreadMsg ? ' (new message!)' : ''}">💬</button>
-          </div>
-          <div style="flex-basis:100%; display:flex; align-items:center; gap:8px; margin-top:4px; flex-wrap:wrap;">
-            <label class="hint" style="margin:0; white-space:nowrap;">📖 Reading:</label>
-            <select data-assign-select="${id}" data-track="translation" style="width:auto; flex:1; min-width:120px; padding:6px 10px; font-size:13px;">
-              <option value="">Class default</option>
-              ${readingOptions}
-            </select>
-          </div>
-          <div style="flex-basis:100%; display:flex; align-items:center; gap:8px; margin-top:4px; flex-wrap:wrap;">
-            <label class="hint" style="margin:0; white-space:nowrap;">🎧 Listening:</label>
-            <select data-assign-select="${id}" data-track="listening" style="width:auto; flex:1; min-width:120px; padding:6px 10px; font-size:13px;">
-              <option value="">Class default</option>
-              ${listeningOptions}
-            </select>
+            <button class="btn ghost small" data-action="remove" data-id="${id}" data-name="${escapeHtml(s.name)}" title="Done reviewing — remove ${escapeHtml(s.name)}" style="color:#c0392b;">✕</button>
           </div>
         </div>`;
     }).join('');
-
-    roster.querySelectorAll('[data-assign-select]').forEach((sel) => {
-      const id = sel.dataset.assignSelect;
-      const track = sel.dataset.track;
-      sel.value = (track === 'listening' ? students[id].listeningAssignmentId : students[id].readingAssignmentId) || '';
-      sel.addEventListener('change', async () => {
-        await db.assignStudent(id, track, sel.value || null);
-        showToast(`${track === 'listening' ? 'Listening' : 'Reading'} assignment updated for ${students[id].name}`);
-      });
-    });
 
     document.getElementById('rosterSummary').textContent =
       `${onlineCount}/${entries.length} online · ${workingCount} actively working · ${doneCount} done`;
@@ -391,6 +246,8 @@
     answersGrid.innerHTML = toShow.map(([id, s]) => {
       const reading = (s.readingAnswerText || '').trim();
       const listening = (s.listeningAnswerText || '').trim();
+      const readingLabel = s.readingTitle ? `📖 Reading — ${escapeHtml(s.readingTitle)}` : '📖 Reading';
+      const listeningLabel = s.listeningTitle ? `🎧 Listening — ${escapeHtml(s.listeningTitle)}` : '🎧 Listening';
       return `
         <div class="answer-card" id="answer-card-${id}">
           <div class="answer-card-head">
@@ -398,13 +255,14 @@
             <span class="hint" title="Total active time" style="font-variant-numeric: tabular-nums; font-weight:700;">⏱ ${fmt(s.activeMs || 0)}</span>
             ${s.completed ? '<span class="badge done">✓ done</span>' : ''}
             <button class="btn ghost small chat-action" data-action="answer-chat" data-id="${id}" data-name="${escapeHtml(s.name)}" title="Message ${escapeHtml(s.name)} privately" style="margin-left:auto;">💬</button>
+            <button class="btn ghost small" data-action="answer-remove" data-id="${id}" data-name="${escapeHtml(s.name)}" title="Done reviewing — remove ${escapeHtml(s.name)}" style="color:#c0392b;">✕</button>
           </div>
           <div class="answer-block">
-            <div class="answer-label">📖 Reading / translation</div>
+            <div class="answer-label">${readingLabel}</div>
             <div class="answer-text ${reading ? '' : 'empty'}">${reading ? escapeHtml(reading) : 'Nothing written yet'}</div>
           </div>
           <div class="answer-block">
-            <div class="answer-label">🎧 Listening</div>
+            <div class="answer-label">${listeningLabel}</div>
             <div class="answer-text ${listening ? '' : 'empty'}">${listening ? escapeHtml(listening) : 'Nothing written yet'}</div>
           </div>
         </div>`;
@@ -418,10 +276,16 @@
     refreshRoster();
   });
 
-  answersGrid.addEventListener('click', (e) => {
-    const btn = e.target.closest('button[data-action="answer-chat"]');
-    if (!btn) return;
-    openChat(btn.dataset.id, btn.dataset.name);
+  answersGrid.addEventListener('click', async (e) => {
+    const chatBtn = e.target.closest('button[data-action="answer-chat"]');
+    if (chatBtn) { openChat(chatBtn.dataset.id, chatBtn.dataset.name); return; }
+    const removeBtn = e.target.closest('button[data-action="answer-remove"]');
+    if (removeBtn) {
+      if (!confirm(`Remove ${removeBtn.dataset.name} from the roster? Their work is saved to Reports first.`)) return;
+      await db.removeStudent(removeBtn.dataset.id);
+      showToast(`${removeBtn.dataset.name} removed ✓`);
+      refreshRoster();
+    }
   });
 
   function playAlertBeep() {
@@ -464,6 +328,11 @@
       openChat(id, btn.dataset.name);
     } else if (action === 'answer') {
       openAnswer(id, btn.dataset.name);
+    } else if (action === 'remove') {
+      if (!confirm(`Remove ${btn.dataset.name} from the roster? Their work is saved to Reports first.`)) return;
+      await db.removeStudent(id);
+      showToast(`${btn.dataset.name} removed ✓`);
+      refreshRoster();
     }
   });
 
@@ -485,13 +354,15 @@
     if (!s) return;
     const reading = (s.readingAnswerText || '').trim();
     const listening = (s.listeningAnswerText || '').trim();
+    const readingLabel = s.readingTitle ? `📖 Reading — ${escapeHtml(s.readingTitle)}` : '📖 Reading';
+    const listeningLabel = s.listeningTitle ? `🎧 Listening — ${escapeHtml(s.listeningTitle)}` : '🎧 Listening';
     answerBody.innerHTML = `
       <div style="margin-bottom:18px;">
-        <div class="hint" style="font-weight:700; margin-bottom:6px;">📖 Reading / translation</div>
+        <div class="hint" style="font-weight:700; margin-bottom:6px;">${readingLabel}</div>
         <div>${reading ? escapeHtml(reading) : '<span class="hint">(nothing written yet)</span>'}</div>
       </div>
       <div>
-        <div class="hint" style="font-weight:700; margin-bottom:6px;">🎧 Listening</div>
+        <div class="hint" style="font-weight:700; margin-bottom:6px;">${listeningLabel}</div>
         <div>${listening ? escapeHtml(listening) : '<span class="hint">(nothing written yet)</span>'}</div>
       </div>`;
   }
@@ -575,9 +446,6 @@
   chatSendBtn.addEventListener('click', sendChat);
   chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendChat(); });
 
-  applyRememberedSettings();
-  loadAssignments();
-  populateStudentAssignmentOptions();
   loadPin();
   refreshRoster();
   setInterval(refreshRoster, 2500);

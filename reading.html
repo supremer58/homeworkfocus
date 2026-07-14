@@ -27,19 +27,16 @@
     <strong>⏸ Your teacher paused your timer.</strong> Hang tight — it'll resume when they unpause it.
   </div>
 
-  <div class="card" id="mismatchCard" hidden style="text-align:center;">
-    <h2>📖 No reading homework right now</h2>
-    <p class="hint">Check with your teacher, or head back to the homework menu.</p>
-  </div>
-
-  <div class="card" id="taskCard" hidden>
-    <h2 id="assignmentTitle">Loading today's reading homework…</h2>
-
-    <p class="hint" style="margin-bottom:14px;">Translate the passage below into your own language.</p>
-    <div class="passage-text" id="passageText"></div>
+  <div class="card">
+    <h2>📖 Reading</h2>
+    <p class="hint" style="margin-bottom:14px;">What are you working on? Give it a title, then write your translation or corrections below.</p>
     <div class="field">
-      <label for="answerBox">Your translation</label>
-      <textarea id="answerBox" rows="10" placeholder="Start typing your translation here..."></textarea>
+      <label for="titleInput">Title / topic</label>
+      <input type="text" id="titleInput" placeholder="e.g. Unit 5 dialogue, or a sentence I got wrong" />
+    </div>
+    <div class="field">
+      <label for="answerBox">Your translation / corrected work</label>
+      <textarea id="answerBox" rows="10" placeholder="Start typing here..."></textarea>
       <div class="word-count" id="wordCount">0 words</div>
     </div>
 
@@ -50,7 +47,6 @@
 
     <button id="doneBtn" class="btn primary">✅ Mark as done</button>
     <span id="doneMsg" class="hint" style="margin-left:10px;"></span>
-    <p id="doneHint" class="hint" style="margin-top:8px; color:var(--brand-2);"></p>
   </div>
 </div>
 
