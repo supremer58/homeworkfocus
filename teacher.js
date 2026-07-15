@@ -317,7 +317,6 @@
     if (chatBtn) { openChat(chatBtn.dataset.id, chatBtn.dataset.name); return; }
     const removeBtn = e.target.closest('button[data-action="answer-remove"]');
     if (removeBtn) {
-      if (!confirm(`Remove ${removeBtn.dataset.name} from the roster? Their work is saved to Reports first.`)) return;
       await db.removeStudent(removeBtn.dataset.id);
       showToast(`${removeBtn.dataset.name} removed ✓`);
       refreshRoster();
@@ -365,7 +364,6 @@
     } else if (action === 'answer') {
       openAnswer(id, btn.dataset.name);
     } else if (action === 'remove') {
-      if (!confirm(`Remove ${btn.dataset.name} from the roster? Their work is saved to Reports first.`)) return;
       await db.removeStudent(id);
       showToast(`${btn.dataset.name} removed ✓`);
       refreshRoster();
