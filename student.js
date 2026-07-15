@@ -9,11 +9,11 @@
 
   async function loadStatus() {
     try {
-      const [s, track] = await Promise.all([db.getStudent(studentId), db.getListeningTrack()]);
+      const s = await db.getStudent(studentId);
       const parts = [];
       if (s && s.readingTitle) parts.push(`📖 ${s.readingTitle}`);
-      if (track && track.title) parts.push(`🎧 ${track.title}`);
-      summary.textContent = parts.length ? `Homework: ${parts.join(' · ')}` : 'Pick reading or listening below to get started.';
+      if (s && s.listeningTitle) parts.push(`🎧 ${s.listeningTitle}`);
+      summary.textContent = parts.length ? `Working on: ${parts.join(' · ')}` : 'Pick reading or listening below and give your work a title.';
     } catch (e) {
       summary.textContent = 'Could not reach the server. Check your internet connection.';
     }

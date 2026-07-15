@@ -51,42 +51,6 @@
     document.getElementById('pinField').value = state.pin || '';
   }
 
-  // ---- Listening track ----
-  let currentTrackTitle = '';
-  const uploadMsg = document.getElementById('uploadMsg');
-  const currentTrackText = document.getElementById('currentTrackText');
-
-  async function loadListeningTrack() {
-    const track = await db.getListeningTrack();
-    currentTrackTitle = track ? track.title : '';
-    currentTrackText.textContent = track && track.title
-      ? `Current track: 🎧 ${currentTrackTitle}`
-      : 'No listening track uploaded yet.';
-    return track;
-  }
-
-  document.getElementById('uploadTrackBtn').addEventListener('click', async () => {
-    const title = document.getElementById('trackTitleInput').value.trim();
-    const fileInput = document.getElementById('trackFileInput');
-    const file = fileInput.files[0];
-    if (!title || !file) {
-      showToast('Add a title and choose an audio file first.');
-      return;
-    }
-    uploadMsg.textContent = 'Uploading…';
-    const result = await db.uploadAudio(file);
-    if (result.error) {
-      uploadMsg.textContent = '';
-      showToast(`Upload failed: ${result.error}`);
-      return;
-    }
-    await db.setListeningTrack(title, result.url);
-    uploadMsg.textContent = 'Saved ✓';
-    setTimeout(() => uploadMsg.textContent = '', 2000);
-    fileInput.value = '';
-    loadListeningTrack();
-  });
-
   // ---- Broadcast ----
   document.getElementById('broadcastBtn').addEventListener('click', async () => {
     const input = document.getElementById('broadcastInput');
@@ -283,7 +247,7 @@
       const reading = (s.readingAnswerText || '').trim();
       const listening = (s.listeningAnswerText || '').trim();
       const readingLabel = s.readingTitle ? `📖 Reading — ${escapeHtml(s.readingTitle)}` : '📖 Reading';
-      const listeningLabel = currentTrackTitle ? `🎧 Listening — ${escapeHtml(currentTrackTitle)}` : '🎧 Listening';
+      const listeningLabel = s.listeningTitle ? `🎧 Listening — ${escapeHtml(s.listeningTitle)}` : '🎧 Listening';
       return `
         <div class="answer-card" id="answer-card-${id}">
           <div class="answer-card-head">
@@ -389,7 +353,7 @@
     const reading = (s.readingAnswerText || '').trim();
     const listening = (s.listeningAnswerText || '').trim();
     const readingLabel = s.readingTitle ? `📖 Reading — ${escapeHtml(s.readingTitle)}` : '📖 Reading';
-    const listeningLabel = currentTrackTitle ? `🎧 Listening — ${escapeHtml(currentTrackTitle)}` : '🎧 Listening';
+    const listeningLabel = s.listeningTitle ? `🎧 Listening — ${escapeHtml(s.listeningTitle)}` : '🎧 Listening';
     answerBody.innerHTML = `
       <div style="margin-bottom:18px;">
         <div class="hint" style="font-weight:700; margin-bottom:6px;">${readingLabel}</div>
@@ -481,7 +445,6 @@
   chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendChat(); });
 
   loadPin();
-  loadListeningTrack();
   refreshRoster();
   setInterval(refreshRoster, 2500);
 })();

@@ -15,7 +15,7 @@
       <h1 id="greeting">Hi!</h1>
       <p>Keep working — the timer only counts while you're actually on task.</p>
     </div>
-    <div id="timerBadge" class="timer-badge paused" title="Counts only while audio is playing or you're typing. Pauses when idle or you switch tabs.">
+    <div id="timerBadge" class="timer-badge paused" title="Counts only while you're typing. Pauses when idle or you switch tabs.">
       <span class="dot"></span>
       <span id="timerDisplay">00:00</span>
     </div>
@@ -27,27 +27,16 @@
     <strong>⏸ Your teacher paused your timer.</strong> Hang tight — it'll resume when they unpause it.
   </div>
 
-  <div class="card" id="mismatchCard" hidden style="text-align:center;">
-    <h2>🎧 No listening track yet</h2>
-    <p class="hint">Check with your teacher, or head back to the homework menu.</p>
-  </div>
-
-  <div class="card" id="taskCard" hidden>
-    <h2 id="assignmentTitle">Loading today's listening track…</h2>
-    <p class="hint" style="margin-bottom:14px;">Listen to the track (as many times as you need), then write your translation below.</p>
-    <audio id="audioTrack" controls style="width:100%; margin-bottom: 12px;"></audio>
-    <div style="display:flex; align-items:center; gap:10px; margin-bottom:22px; flex-wrap:wrap;">
-      <button id="replayBtn" class="btn ghost" type="button">🔁 Replay</button>
-      <label class="hint" style="margin:0;" for="speedSelect">Speed:</label>
-      <select id="speedSelect" style="width:auto; padding:8px 10px;">
-        <option value="0.75">0.75x</option>
-        <option value="1" selected>1x</option>
-        <option value="1.25">1.25x</option>
-      </select>
+  <div class="card">
+    <h2>🎧 Listening</h2>
+    <p class="hint" style="margin-bottom:14px;">What are you working on? Give it a title, then write your translation below.</p>
+    <div class="field">
+      <label for="titleInput">Title / topic</label>
+      <input type="text" id="titleInput" placeholder="e.g. Unit 5 audio, or a word I misheard" />
     </div>
     <div class="field">
       <label for="listenAnswerBox">Your translation</label>
-      <textarea id="listenAnswerBox" rows="10" placeholder="Type what you hear, or your translation..."></textarea>
+      <textarea id="listenAnswerBox" rows="10" placeholder="Start typing here..."></textarea>
       <div class="word-count" id="wordCount">0 words</div>
     </div>
 
