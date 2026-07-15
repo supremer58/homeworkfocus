@@ -59,7 +59,7 @@ function initHomeworkPage(expectedType) {
 
   let idleSinceLocal = null;
   const timer = createActivityTimer({
-    idleTimeoutMs: 6000,
+    idleTimeoutMs: 5000,
     onTick: (ms) => {
       timerDisplay.textContent = fmt(ms);
       const pct = Math.min(100, Math.round((ms / SUGGESTED_MS) * 100));

@@ -1,8 +1,9 @@
 // Tracks "actively working" time on a task and stays idle otherwise.
-// Active = recent keystroke/mouse/scroll input, OR an <audio>/<video> element is playing.
+// Active = actually typing (keystrokes), OR an <audio>/<video> element is
+// playing. Mouse movement/scrolling/touch alone does not count as active.
 // Pauses immediately on idle timeout OR when the tab loses focus/visibility.
 function createActivityTimer({
-  idleTimeoutMs = 6000,
+  idleTimeoutMs = 5000,
   onTick = () => {},
   onStateChange = () => {},
 } = {}) {
@@ -48,7 +49,7 @@ function createActivityTimer({
     }
   }
 
-  const inputEvents = ['keydown', 'input', 'mousemove', 'mousedown', 'wheel', 'touchstart', 'touchmove'];
+  const inputEvents = ['keydown', 'input'];
   inputEvents.forEach((evt) => window.addEventListener(evt, markInput, { passive: true }));
 
   document.addEventListener('visibilitychange', () => {
