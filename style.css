@@ -242,7 +242,7 @@ label { font-size: 13.5px; font-weight: 600; color: var(--text-dim); display: bl
   display: flex; align-items: center; gap: 6px; margin-bottom: 4px;
 }
 .answer-card .answer-text {
-  font-size: 14px; line-height: 1.6; white-space: pre-wrap;
+  font-size: 14px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere;
   background: var(--bg-alt); border: 1px solid var(--border); border-radius: 10px;
   padding: 10px 12px;
 }
