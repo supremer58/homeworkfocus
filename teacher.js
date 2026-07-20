@@ -13,6 +13,90 @@
   const joinUrl = `${window.location.origin}/`;
   joinInfo.textContent = `Students join at ${joinUrl}`;
 
+  // ---- Classes ----
+  const classSelect = document.getElementById('classSelect');
+  let currentClassId = localStorage.getItem('hf-current-class-id') || '';
+  let classesCache = [];
+
+  async function loadClasses({ selectId } = {}) {
+    classesCache = await db.getClasses();
+    if (classesCache.length === 0) {
+      const result = await db.createClass('My Class');
+      if (result.error) {
+        classSelect.innerHTML = '<option>Setup needed</option>';
+        showToast('Could not load classes — the database may need an update. Contact support.');
+        return;
+      }
+      classesCache = await db.getClasses();
+      showToast(`Created "My Class" — PIN: ${result.pin}`);
+    }
+    if (classesCache.length === 0) return;
+    if (selectId) currentClassId = selectId;
+    if (!currentClassId || !classesCache.some((c) => c.id === currentClassId)) {
+      currentClassId = classesCache[0].id;
+    }
+    localStorage.setItem('hf-current-class-id', currentClassId);
+    classSelect.innerHTML = classesCache.map((c) => `<option value="${c.id}" ${c.id === currentClassId ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('');
+  }
+
+  // ---- Realtime: react instantly to student joins/updates/messages ----
+  // instead of waiting for the next poll. Polling stays as a slower
+  // fallback in case the realtime connection drops.
+  let realtimeChannel = null;
+  function subscribeRealtime() {
+    if (realtimeChannel) supabaseClient.removeChannel(realtimeChannel);
+    if (!currentClassId) return;
+    realtimeChannel = supabaseClient
+      .channel(`teacher-class-${currentClassId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'students', filter: `class_id=eq.${currentClassId}` }, () => {
+        refreshRoster();
+        if (activeAnswerId) pollAnswer();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `class_id=eq.${currentClassId}` }, () => {
+        refreshRoster();
+        if (activeChatId) pollChat();
+      })
+      .subscribe();
+  }
+
+  classSelect.addEventListener('change', async () => {
+    currentClassId = classSelect.value;
+    localStorage.setItem('hf-current-class-id', currentClassId);
+    closeAllPanels();
+    await loadPin();
+    await refreshRoster();
+    subscribeRealtime();
+  });
+
+  document.getElementById('newClassBtn').addEventListener('click', async () => {
+    const name = prompt('Name for the new class (e.g. "Period 3"):');
+    if (!name || !name.trim()) return;
+    const result = await db.createClass(name.trim());
+    if (result.error) { showToast(`Could not create class: ${result.error}`); return; }
+    await loadClasses({ selectId: result.id });
+    await loadPin();
+    await refreshRoster();
+    subscribeRealtime();
+    showToast(`"${name.trim()}" created — PIN: ${result.pin}`);
+  });
+
+  document.getElementById('renameClassBtn').addEventListener('click', async () => {
+    const current = classesCache.find((c) => c.id === currentClassId);
+    const name = prompt('New name for this class:', current ? current.name : '');
+    if (!name || !name.trim()) return;
+    await db.renameClass(currentClassId, name.trim());
+    await loadClasses();
+    showToast('Class renamed ✓');
+  });
+
+  function closeAllPanels() {
+    answerPanel.hidden = true;
+    chatPanel.hidden = true;
+    trendPanel.hidden = true;
+    activeAnswerId = null;
+    activeChatId = null;
+  }
+
   // ---- QR code ----
   const qrCard = document.getElementById('qrCard');
   document.getElementById('showQrBtn').addEventListener('click', async () => {
@@ -20,14 +104,14 @@
     if (!qrCard.hidden) {
       document.getElementById('qrImg').src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(joinUrl)}`;
       document.getElementById('qrUrlText').textContent = joinUrl;
-      const state = await db.getState();
+      const state = await db.getState(currentClassId);
       document.getElementById('qrPinText').textContent = state.pin || '';
     }
   });
 
   // ---- Copy invite ----
   document.getElementById('copyInviteBtn').addEventListener('click', async () => {
-    const state = await db.getState();
+    const state = await db.getState(currentClassId);
     const text = `Join HomeworkFocus: ${joinUrl}\nPIN: ${state.pin || ''}`;
     try {
       await navigator.clipboard.writeText(text);
@@ -41,13 +125,18 @@
   document.getElementById('savePinBtn').addEventListener('click', async () => {
     const pin = document.getElementById('pinField').value.trim();
     if (!pin) return;
-    await db.setPin(pin);
+    const result = await db.setClassPin(currentClassId, pin);
+    if (result.error) {
+      saveMsg.textContent = 'That PIN is already used by another class.';
+      setTimeout(() => saveMsg.textContent = '', 3000);
+      return;
+    }
     saveMsg.textContent = 'Saved ✓';
     setTimeout(() => saveMsg.textContent = '', 2000);
   });
 
   async function loadPin() {
-    const state = await db.getState();
+    const state = await db.getState(currentClassId);
     document.getElementById('pinField').value = state.pin || '';
   }
 
@@ -56,7 +145,7 @@
     const input = document.getElementById('broadcastInput');
     const text = input.value.trim();
     if (!text) return;
-    await db.sendMessage({ studentId: null, from: 'teacher', fromName: 'Teacher', text });
+    await db.sendMessage({ classId: currentClassId, studentId: null, from: 'teacher', fromName: 'Teacher', text });
     input.value = '';
     document.getElementById('broadcastMsg').textContent = 'Sent to everyone ✓';
     setTimeout(() => document.getElementById('broadcastMsg').textContent = '', 2500);
@@ -69,20 +158,20 @@
     }
     const input = document.getElementById('broadcastInput');
     const text = input.value.trim() || "⏰ Just checking in — need help getting back on track?";
-    await Promise.all(currentIdleIds.map((id) => db.sendMessage({ studentId: id, from: 'teacher', fromName: 'Teacher', text })));
+    await Promise.all(currentIdleIds.map((id) => db.sendMessage({ classId: currentClassId, studentId: id, from: 'teacher', fromName: 'Teacher', text })));
     input.value = '';
     document.getElementById('broadcastMsg').textContent = `Sent to ${currentIdleIds.length} idle student${currentIdleIds.length > 1 ? 's' : ''} ✓`;
     setTimeout(() => document.getElementById('broadcastMsg').textContent = '', 2500);
   });
 
   document.getElementById('clearRosterBtn').addEventListener('click', async () => {
-    if (!confirm('Start a fresh session? Today\'s roster will be saved to the report, then cleared. Assignments stay the same.')) return;
-    await db.clearRoster();
+    if (!confirm('Start a fresh session? Today\'s roster will be saved to the report, then cleared.')) return;
+    await db.clearRoster(currentClassId);
     refreshRoster();
   });
 
   document.getElementById('downloadHistoryBtn').addEventListener('click', async () => {
-    const history = await db.getHistory();
+    const history = await db.getHistory(currentClassId);
     if (!history.length) { showToast('No history yet — nothing to download.'); return; }
     const rows = [['Date', 'Name', 'Assignment', 'Active time (min)', 'Completed', 'Reading answer', 'Listening answer']];
     history.forEach(h => {
@@ -122,8 +211,8 @@
 
   async function refreshRoster() {
     const [state, allMessages] = await Promise.all([
-      db.getState(),
-      db.getMessages(),
+      db.getState(currentClassId),
+      db.getMessages(currentClassId),
     ]);
     const msgCountsByStudent = {};
     allMessages.forEach((m) => {
@@ -254,7 +343,8 @@
             <span class="name">${escapeHtml(s.name)}</span>
             <span class="hint" title="Total active time" style="font-variant-numeric: tabular-nums; font-weight:700;">⏱ ${fmt(s.activeMs || 0)}</span>
             ${s.completed ? '<span class="badge done">✓ done</span>' : ''}
-            <button class="btn ghost small chat-action" data-action="answer-chat" data-id="${id}" data-name="${escapeHtml(s.name)}" title="Message ${escapeHtml(s.name)} privately" style="margin-left:auto;">💬</button>
+            <button class="btn ghost small" data-action="answer-trend" data-id="${id}" data-name="${escapeHtml(s.name)}" title="See ${escapeHtml(s.name)}'s trend over time" style="margin-left:auto;">📈</button>
+            <button class="btn ghost small chat-action" data-action="answer-chat" data-id="${id}" data-name="${escapeHtml(s.name)}" title="Message ${escapeHtml(s.name)} privately">💬</button>
             <button class="btn ghost small" data-action="answer-remove" data-id="${id}" data-name="${escapeHtml(s.name)}" title="Done reviewing — remove ${escapeHtml(s.name)}" style="color:#c0392b;">✕</button>
           </div>
           <div class="answer-block">
@@ -279,6 +369,8 @@
   answersGrid.addEventListener('click', async (e) => {
     const chatBtn = e.target.closest('button[data-action="answer-chat"]');
     if (chatBtn) { openChat(chatBtn.dataset.id, chatBtn.dataset.name); return; }
+    const trendBtn = e.target.closest('button[data-action="answer-trend"]');
+    if (trendBtn) { openTrend(trendBtn.dataset.name); return; }
     const removeBtn = e.target.closest('button[data-action="answer-remove"]');
     if (removeBtn) {
       await db.removeStudent(removeBtn.dataset.id);
@@ -344,7 +436,6 @@
   const answerBody = document.getElementById('answerBody');
   const answerClose = document.getElementById('answerClose');
   let activeAnswerId = null;
-  let answerPollHandle = null;
 
   async function pollAnswer() {
     if (!activeAnswerId) return;
@@ -370,14 +461,12 @@
     answerWithName.textContent = `📝 ${name}'s answers`;
     answerPanel.hidden = false;
     chatPanel.hidden = true;
+    trendPanel.hidden = true;
     pollAnswer();
-    clearInterval(answerPollHandle);
-    answerPollHandle = setInterval(pollAnswer, 2500);
   }
   answerClose.addEventListener('click', () => {
     answerPanel.hidden = true;
     activeAnswerId = null;
-    clearInterval(answerPollHandle);
   });
 
   // ---- Chat ----
@@ -389,7 +478,6 @@
   const chatClose = document.getElementById('chatClose');
   let activeChatId = null;
   let activeChatName = '';
-  let chatPollHandle = null;
 
   function renderMessages(msgs) {
     if (msgs.length === 0) {
@@ -406,7 +494,7 @@
 
   async function pollChat() {
     if (!activeChatId) return;
-    const msgs = await db.getMessages(activeChatId);
+    const msgs = await db.getMessages(currentClassId, activeChatId);
     const mine = msgs.filter(m => m.studentId === activeChatId);
     renderMessages(mine);
     // Viewing the panel counts as reading everything currently in it.
@@ -423,28 +511,78 @@
     chatWithName.textContent = `💬 ${name}`;
     chatPanel.hidden = false;
     answerPanel.hidden = true;
+    trendPanel.hidden = true;
     pollChat();
-    clearInterval(chatPollHandle);
-    chatPollHandle = setInterval(pollChat, 2500);
   }
 
   chatClose.addEventListener('click', () => {
     chatPanel.hidden = true;
     activeChatId = null;
-    clearInterval(chatPollHandle);
   });
 
   async function sendChat() {
     const text = chatInput.value.trim();
     if (!text || !activeChatId) return;
     chatInput.value = '';
-    await db.sendMessage({ studentId: activeChatId, from: 'teacher', fromName: 'Teacher', text });
+    await db.sendMessage({ classId: currentClassId, studentId: activeChatId, from: 'teacher', fromName: 'Teacher', text });
     pollChat();
   }
   chatSendBtn.addEventListener('click', sendChat);
   chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendChat(); });
 
-  loadPin();
-  refreshRoster();
-  setInterval(refreshRoster, 2500);
+  // ---- Trend (per-student history across sessions) ----
+  const trendPanel = document.getElementById('trendPanel');
+  const trendWithName = document.getElementById('trendWithName');
+  const trendBody = document.getElementById('trendBody');
+  const trendClose = document.getElementById('trendClose');
+
+  function renderTrendChart(rows) {
+    if (rows.length === 0) {
+      return '<p class="hint" style="text-align:center; margin-top:20px;">No past sessions yet for this student — trends appear after "New session" is used at least once.</p>';
+    }
+    const w = 320, h = 160, pad = 28;
+    const maxMin = Math.max(1, ...rows.map((r) => r.activeMs / 60000));
+    const barW = (w - pad * 2) / rows.length;
+    const bars = rows.map((r, i) => {
+      const minutes = r.activeMs / 60000;
+      const barH = Math.max(2, (minutes / maxMin) * (h - pad * 2));
+      const x = pad + i * barW + barW * 0.15;
+      const y = h - pad - barH;
+      const color = r.completed ? 'var(--brand)' : '#b8bfd6';
+      return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${(barW * 0.7).toFixed(1)}" height="${barH.toFixed(1)}" rx="3" fill="${color}"><title>${escapeHtml(r.date)}: ${minutes.toFixed(1)} min${r.completed ? ' (done)' : ''}</title></rect>`;
+    }).join('');
+    const axisY = h - pad;
+    return `
+      <svg viewBox="0 0 ${w} ${h}" style="width:100%; height:auto; max-width:400px; display:block; margin:0 auto;">
+        <line x1="${pad}" y1="${axisY}" x2="${w - pad}" y2="${axisY}" stroke="var(--border)" stroke-width="1" />
+        ${bars}
+      </svg>
+      <p class="hint" style="text-align:center; margin-top:10px;">Active minutes per past session (darker = marked done). Hover a bar for the date.</p>`;
+  }
+
+  async function openTrend(name) {
+    trendWithName.textContent = `📈 ${name}'s trend`;
+    trendPanel.hidden = false;
+    answerPanel.hidden = true;
+    chatPanel.hidden = true;
+    trendBody.innerHTML = '<p class="hint">Loading…</p>';
+    const history = await db.getHistory(currentClassId);
+    const rows = history
+      .filter((h) => h.name.trim().toLowerCase() === name.trim().toLowerCase())
+      .sort((a, b) => a.date.localeCompare(b.date));
+    trendBody.innerHTML = renderTrendChart(rows);
+  }
+
+  trendClose.addEventListener('click', () => { trendPanel.hidden = true; });
+
+  async function init() {
+    await loadClasses();
+    await loadPin();
+    await refreshRoster();
+    subscribeRealtime();
+    setInterval(refreshRoster, 15000);
+    setInterval(() => { if (activeChatId) pollChat(); }, 8000);
+    setInterval(() => { if (activeAnswerId) pollAnswer(); }, 8000);
+  }
+  init();
 })();

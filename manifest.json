@@ -1,0 +1,13 @@
+{
+  "name": "HomeworkFocus",
+  "short_name": "HomeworkFocus",
+  "description": "Stay after class, finish strong.",
+  "start_url": "/index.html",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#6d5ef8",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

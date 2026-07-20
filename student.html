@@ -6,6 +6,8 @@
 <title>HomeworkFocus · Homework</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%9A%3C/text%3E%3C/svg%3E" />
 <link rel="stylesheet" href="style.css" />
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#6d5ef8" />
 </head>
 <body>
 <div class="wrap">
@@ -37,5 +39,10 @@
 <script src="config.js"></script>
 <script src="db.js"></script>
 <script src="student.js"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('service-worker.js'));
+  }
+</script>
 </body>
 </html>

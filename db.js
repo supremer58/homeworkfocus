@@ -1,11 +1,13 @@
 // Data layer backed by Supabase — replaces the old local-server REST API.
 // Every function here mirrors what the old /api/* endpoints used to do.
+// Multi-class: every student/message/history row belongs to a class_id.
 
 function studentRowToClient(row) {
   if (!row) return null;
   return {
     id: row.id,
     name: row.name,
+    classId: row.class_id,
     activeMs: row.active_ms,
     completed: row.completed,
     lastSeen: row.last_seen,
@@ -21,14 +23,53 @@ function studentRowToClient(row) {
   };
 }
 
+function classRowToClient(row) {
+  if (!row) return null;
+  return { id: row.id, name: row.name, pin: row.pin, createdAt: row.created_at };
+}
+
+function randomPin() {
+  return String(Math.floor(1000 + Math.random() * 9000));
+}
+
 const db = {
-  async join(name, pin) {
-    const { data: settings } = await supabaseClient.from('app_settings').select('*').eq('id', 1).single();
-    if (!settings || settings.pin !== pin) return { error: 'wrong-pin' };
-    const id = (name.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || 'student') + '-' + Math.floor(Math.random() * 9999);
-    const { error } = await supabaseClient.from('students').insert({ id, name });
+  // ---- Classes ----
+  async getClasses() {
+    const { data } = await supabaseClient.from('classes').select('*').order('created_at', { ascending: true });
+    return (data || []).map(classRowToClient);
+  },
+
+  async createClass(name) {
+    const id = 'class-' + Date.now();
+    let pin = randomPin();
+    // Extremely unlikely, but retry once if the random PIN collides.
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const { error } = await supabaseClient.from('classes').insert({ id, name, pin });
+      if (!error) return { id, pin };
+      if (error.code !== '23505') return { error: error.message };
+      pin = randomPin();
+    }
+    return { error: 'Could not generate a unique PIN, try again.' };
+  },
+
+  async renameClass(classId, name) {
+    await supabaseClient.from('classes').update({ name }).eq('id', classId);
+  },
+
+  async setClassPin(classId, pin) {
+    const { error } = await supabaseClient.from('classes').update({ pin }).eq('id', classId);
     if (error) return { error: error.message };
-    return { id };
+    return {};
+  },
+
+  // ---- Join ----
+  async join(name, pin) {
+    const { data: cls } = await supabaseClient.from('classes').select('*').eq('pin', pin).maybeSingle();
+    if (!cls) return { error: 'wrong-pin' };
+    const id = (name.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || 'student') + '-' + Math.floor(Math.random() * 9999);
+    const { error } = await supabaseClient.from('students').insert({ id, name, class_id: cls.id });
+    if (error) return { error: error.message };
+    return { id, classId: cls.id, className: cls.name };
   },
 
   async getStudent(id) {
@@ -51,15 +92,11 @@ const db = {
     }
   },
 
-  async setPin(pin) {
-    await supabaseClient.from('app_settings').update({ pin }).eq('id', 1);
-  },
-
   async removeStudent(id) {
     const { data: s } = await supabaseClient.from('students').select('*').eq('id', id).maybeSingle();
     if (s) {
       await supabaseClient.from('history').insert({
-        date: new Date().toISOString().slice(0, 10), student_id: s.id, name: s.name,
+        date: new Date().toISOString().slice(0, 10), student_id: s.id, name: s.name, class_id: s.class_id,
         assignment_title: [s.reading_title, s.listening_title].filter(Boolean).join(' / '),
         active_ms: s.active_ms, completed: s.completed,
         reading_answer_text: s.reading_answer_text, listening_answer_text: s.listening_answer_text,
@@ -69,21 +106,21 @@ const db = {
     await supabaseClient.from('students').delete().eq('id', id);
   },
 
-  async clearRoster() {
-    const { data: students } = await supabaseClient.from('students').select('*');
+  async clearRoster(classId) {
+    const { data: students } = await supabaseClient.from('students').select('*').eq('class_id', classId);
     const today = new Date().toISOString().slice(0, 10);
     const historyRows = (students || []).map((s) => ({
-      date: today, student_id: s.id, name: s.name,
+      date: today, student_id: s.id, name: s.name, class_id: s.class_id,
       assignment_title: [s.reading_title, s.listening_title].filter(Boolean).join(' / '),
       active_ms: s.active_ms, completed: s.completed,
       reading_answer_text: s.reading_answer_text, listening_answer_text: s.listening_answer_text,
     }));
     if (historyRows.length) await supabaseClient.from('history').insert(historyRows);
-    await supabaseClient.from('students').delete().neq('id', '');
+    await supabaseClient.from('students').delete().eq('class_id', classId);
   },
 
-  async getHistory() {
-    const { data } = await supabaseClient.from('history').select('*').order('date', { ascending: false });
+  async getHistory(classId) {
+    const { data } = await supabaseClient.from('history').select('*').eq('class_id', classId).order('date', { ascending: false });
     return (data || []).map((h) => ({
       date: h.date, name: h.name, assignmentTitle: h.assignment_title,
       activeMs: h.active_ms, completed: h.completed,
@@ -100,8 +137,8 @@ const db = {
     }
   },
 
-  async getMessages(studentId) {
-    let query = supabaseClient.from('messages').select('*').order('ts', { ascending: true });
+  async getMessages(classId, studentId) {
+    let query = supabaseClient.from('messages').select('*').eq('class_id', classId).order('ts', { ascending: true });
     if (studentId) query = query.or(`student_id.eq.${studentId},student_id.is.null`);
     const { data } = await query;
     return (data || []).map((m) => ({
@@ -109,17 +146,17 @@ const db = {
     }));
   },
 
-  async sendMessage({ studentId, from, fromName, text }) {
-    await supabaseClient.from('messages').insert({ student_id: studentId, from_role: from, from_name: fromName, text });
+  async sendMessage({ classId, studentId, from, fromName, text }) {
+    await supabaseClient.from('messages').insert({ class_id: classId, student_id: studentId, from_role: from, from_name: fromName, text });
   },
 
-  async getState() {
-    const [{ data: settings }, { data: studentRows }] = await Promise.all([
-      supabaseClient.from('app_settings').select('*').eq('id', 1).single(),
-      supabaseClient.from('students').select('*'),
+  async getState(classId) {
+    const [{ data: cls }, { data: studentRows }] = await Promise.all([
+      supabaseClient.from('classes').select('*').eq('id', classId).maybeSingle(),
+      supabaseClient.from('students').select('*').eq('class_id', classId),
     ]);
     const students = {};
     (studentRows || []).forEach((r) => { students[r.id] = studentRowToClient(r); });
-    return { pin: settings ? settings.pin : '', students };
+    return { pin: cls ? cls.pin : '', className: cls ? cls.name : '', students };
   },
 };

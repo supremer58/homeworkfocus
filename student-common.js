@@ -6,6 +6,7 @@
 function initHomeworkPage(expectedType) {
   const studentId = sessionStorage.getItem('hf-student-id');
   const studentName = sessionStorage.getItem('hf-student-name');
+  const classId = sessionStorage.getItem('hf-class-id');
   if (!studentId) { window.location.href = 'index.html'; return; }
 
   document.getElementById('greeting').textContent = `Hi, ${studentName}!`;
@@ -172,7 +173,7 @@ function initHomeworkPage(expectedType) {
   let lastSeenMsgCountInit = false;
   async function pollMessages() {
     try {
-      const msgs = await db.getMessages(studentId);
+      const msgs = await db.getMessages(classId, studentId);
       const teacherMsgCount = msgs.filter((m) => m.from === 'teacher').length;
       if (chatOpen) {
         renderMessages(msgs);
@@ -205,15 +206,26 @@ function initHomeworkPage(expectedType) {
     const text = chatInput.value.trim();
     if (!text) return;
     chatInput.value = '';
-    await db.sendMessage({ studentId, from: 'student', fromName: studentName, text });
+    await db.sendMessage({ classId, studentId, from: 'student', fromName: studentName, text });
     pollMessages();
   }
   chatSendBtn.addEventListener('click', sendChat);
   chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendChat(); });
 
+  // ---- Realtime: react instantly to teacher actions instead of waiting ----
+  // for the next poll. Polling stays as a slower fallback in case the
+  // realtime connection drops.
+  if (classId) {
+    supabaseClient
+      .channel(`student-${studentId}`)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'students', filter: `id=eq.${studentId}` }, pollControl)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `class_id=eq.${classId}` }, pollMessages)
+      .subscribe();
+  }
+
   resumePriorProgress();
   setInterval(saveProgress, 4000);
-  setInterval(pollControl, 3000);
-  setInterval(pollMessages, 3000);
+  setInterval(pollControl, 15000);
+  setInterval(pollMessages, 15000);
   window.addEventListener('beforeunload', saveProgress);
 }
